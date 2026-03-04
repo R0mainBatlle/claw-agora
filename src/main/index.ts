@@ -2,6 +2,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { app, BrowserWindow, nativeImage } from 'electron';
 import { menubar } from 'menubar';
+import liquidGlass from 'electron-liquid-glass';
 import { BLEEngine } from './ble/engine';
 import { EncounterManager } from './encounter/manager';
 import { EncounterPolicy } from './encounter/policy';
@@ -64,9 +65,11 @@ const mb = menubar({
   preloadWindow: true,
   showDockIcon: false,
   browserWindow: {
-    width: 320,
-    height: 480,
+    width: 360,
+    height: 520,
     resizable: false,
+    transparent: true,
+    backgroundColor: '#00000000',
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -77,6 +80,17 @@ const mb = menubar({
 
 mb.on('ready', async () => {
   console.log('[Aura] Menu bar app ready');
+
+  // Apply Liquid Glass to the window
+  const win = mb.window;
+  if (win) {
+    const glassId = liquidGlass.addView(win.getNativeWindowHandle(), {
+      cornerRadius: 12,
+      opaque: true,
+      tintColor: '#00000030',
+    });
+    console.log(`[Aura] Liquid Glass: id=${glassId}, supported=${liquidGlass.isGlassSupported()}`);
+  }
 
   // Register IPC handlers
   registerIpcHandlers(
