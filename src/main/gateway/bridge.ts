@@ -17,6 +17,7 @@ export class GatewayBridge extends EventEmitter {
   private maxReconnectDelay = 30000;
   private shouldReconnect = false;
   private pendingRpcs = new Map<string, PendingRpc>();
+  private loggedDisconnect = false;
 
   constructor(url: string, authToken: string) {
     super();
@@ -43,7 +44,7 @@ export class GatewayBridge extends EventEmitter {
 
     this.ws.on('open', () => {
       this.reconnectDelay = 1000;
-      this.emit('status', 'connected');
+      this.loggedDisconnect = false;
     });
 
     this.ws.on('message', (data) => {
@@ -52,26 +53,47 @@ export class GatewayBridge extends EventEmitter {
       this.handleMessage(msg);
     });
 
-    this.ws.on('close', () => {
-      this.emit('status', 'disconnected');
+    this.ws.on('close', (code, reason) => {
+      const reasonStr = reason ? reason.toString() : 'no reason';
+      if (!this.loggedDisconnect) {
+        this.loggedDisconnect = true;
+        console.log(`[Gateway] Closed (code=${code}, reason=${reasonStr})`);
+        this.emit('status', 'disconnected');
+      }
       this.scheduleReconnect();
     });
 
     this.ws.on('error', (err) => {
-      this.emit('error', err);
+      if (!this.loggedDisconnect) {
+        this.emit('error', err);
+      }
     });
   }
 
   private handleMessage(msg: GatewayMessage): void {
     if (msg.type === 'event' && msg.event === 'connect.challenge') {
       const req = createRpcRequest('connect', {
-        role: 'node',
-        caps: ['encounter-report'],
-        token: this.authToken || 'phase1-stub',
-        platform: 'macos',
-        version: '0.1.0',
+        minProtocol: 3,
+        maxProtocol: 3,
+        client: {
+          id: 'gateway-client',
+          version: '0.1.0',
+          platform: 'macos',
+          mode: 'backend',
+        },
+        role: 'operator',
+        scopes: ['operator.read', 'operator.write'],
+        ...(this.authToken ? { auth: { token: this.authToken } } : {}),
       });
       this.send(req);
+    } else if (msg.type === 'res' && msg.id && !this.pendingRpcs.has(msg.id)) {
+      // Connect response (not a tracked RPC)
+      if (msg.ok) {
+        console.log('[Gateway] Connected');
+        this.emit('status', 'connected');
+      } else {
+        console.error('[Gateway] Connect failed:', msg.error?.message);
+      }
     } else if (msg.type === 'res') {
       const pending = this.pendingRpcs.get(msg.id);
       if (pending) {

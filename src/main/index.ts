@@ -113,10 +113,6 @@ mb.on('ready', async () => {
     console.log(`[Aura] Connecting to Gateway: ${currentSettings.gatewayUrl}`);
   }
 
-  gatewayBridge.on('status', (status: string) => {
-    console.log(`[Aura] Gateway ${status}`);
-  });
-
   gatewayBridge.on('error', (err: Error) => {
     console.error('[Aura] Gateway error:', err.message);
   });
