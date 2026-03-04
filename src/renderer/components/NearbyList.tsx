@@ -26,7 +26,7 @@ export default function NearbyList({ peers }: NearbyListProps) {
   if (peers.length === 0) {
     return (
       <div className="empty-state">
-        No Claws nearby<br />
+        No agents nearby<br />
         <span style={{ fontSize: 11 }}>Scanning for Aura beacons...</span>
       </div>
     );

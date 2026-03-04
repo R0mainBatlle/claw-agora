@@ -1,14 +1,16 @@
-import type { NearbyPeerData, AuraSettingsData, BleStatusData, GatewayStatusData } from './index';
+import type { NearbyPeerData, AuraSettingsData, BleStatusData, BackendStatusData, EncounterPolicyData } from './index';
 
 interface AuraAPI {
   getSettings(): Promise<AuraSettingsData>;
   updateSettings(partial: Partial<AuraSettingsData>): Promise<AuraSettingsData>;
   getBleStatus(): Promise<BleStatusData>;
   getNearbyPeers(): Promise<NearbyPeerData[]>;
-  getGatewayStatus(): Promise<GatewayStatusData>;
+  getBackendStatus(): Promise<BackendStatusData>;
+  getEncounterPolicy(): Promise<EncounterPolicyData>;
+  updateEncounterPolicy(partial: Partial<EncounterPolicyData>): Promise<EncounterPolicyData>;
   onNearbyPeersUpdated(callback: (peers: NearbyPeerData[]) => void): () => void;
   onBleStatusChanged(callback: (status: BleStatusData) => void): () => void;
-  onGatewayStatusChanged(callback: (status: GatewayStatusData) => void): () => void;
+  onBackendStatusChanged(callback: (status: BackendStatusData) => void): () => void;
 }
 
 declare global {

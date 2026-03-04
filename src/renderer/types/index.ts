@@ -12,11 +12,21 @@ export interface NearbyPeerData {
   lastSeen: number;
 }
 
+export interface EncounterPolicyData {
+  enabled: boolean;
+  minRssi: number;
+  minDwellMs: number;
+  cooldownMs: number;
+  maxPerHour: number;
+  requireHumanPresent: boolean;
+}
+
 export interface AuraSettingsData {
-  gatewayUrl: string;
   humanDescription: string;
   tags: string[];
-  authToken: string;
+  backendType: string;
+  backendOptions: Record<string, unknown>;
+  encounterPolicy: EncounterPolicyData;
 }
 
 export interface BleStatusData {
@@ -24,6 +34,7 @@ export interface BleStatusData {
   scanning: boolean;
 }
 
-export interface GatewayStatusData {
+export interface BackendStatusData {
   connected: boolean;
+  statusText: string;
 }

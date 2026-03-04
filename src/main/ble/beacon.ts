@@ -1,6 +1,7 @@
 import { crc32 } from 'crc';
 import crypto from 'node:crypto';
 import { MAGIC, VERSION, BEACON_SIZE } from './constants';
+import { signBeacon } from './crypto';
 
 export interface BeaconFlags {
   acceptingEncounters: boolean;
@@ -74,15 +75,30 @@ export function createLocalBeacon(
   clawId: Buffer,
   tags: string[],
   flags: BeaconFlags,
+  sessionKey?: Buffer,
 ): Buffer {
   const nonce = crypto.randomBytes(4);
-  const signature = Buffer.alloc(8, 0); // Phase 1: no real signature
+  const intentHash = computeIntentHash(tags);
+
+  // Build the first 16 bytes to sign
+  const prefix = Buffer.alloc(16);
+  MAGIC.copy(prefix, 0);
+  prefix.writeUInt8(VERSION, 2);
+  prefix.writeUInt8(encodeFlags(flags), 3);
+  clawId.copy(prefix, 4);
+  prefix.writeUInt32BE(intentHash, 8);
+  nonce.copy(prefix, 12);
+
+  const signature = sessionKey
+    ? signBeacon(prefix, sessionKey)
+    : Buffer.alloc(8, 0);
+
   return encodeBeacon({
     magic: MAGIC,
     version: VERSION,
     flags,
     clawId,
-    intentHash: computeIntentHash(tags),
+    intentHash,
     nonce,
     signature,
   });

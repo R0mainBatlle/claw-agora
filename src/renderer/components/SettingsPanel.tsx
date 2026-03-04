@@ -1,5 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { useSettings } from '../hooks/useAuraAPI';
+import { useSettings, useEncounterPolicy } from '../hooks/useAuraAPI';
+import SettingsSidebar, { SettingsTab } from './SettingsSidebar';
+import IdentitySettings from './IdentitySettings';
+import BackendSettings from './BackendSettings';
+import PolicySettings from './PolicySettings';
+import type { EncounterPolicyData } from '../types';
 
 interface SettingsPanelProps {
   onBack: () => void;
@@ -7,79 +12,85 @@ interface SettingsPanelProps {
 
 export default function SettingsPanel({ onBack }: SettingsPanelProps) {
   const { settings, updateSettings } = useSettings();
+  const { policy, updatePolicy } = useEncounterPolicy();
 
-  const [gatewayUrl, setGatewayUrl] = useState('');
+  const [activeTab, setActiveTab] = useState<SettingsTab>('identity');
   const [humanDescription, setHumanDescription] = useState('');
-  const [tagsInput, setTagsInput] = useState('');
-  const [authToken, setAuthToken] = useState('');
+  const [tags, setTags] = useState<string[]>([]);
+  const [backendType, setBackendType] = useState('openclaw');
+  const [backendOptions, setBackendOptions] = useState<Record<string, unknown>>({});
+  const [localPolicy, setLocalPolicy] = useState<EncounterPolicyData | null>(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (settings) {
-      setGatewayUrl(settings.gatewayUrl);
       setHumanDescription(settings.humanDescription);
-      setTagsInput(settings.tags.join(', '));
-      setAuthToken(settings.authToken);
+      setTags(settings.tags);
+      setBackendType(settings.backendType);
+      setBackendOptions(settings.backendOptions);
     }
   }, [settings]);
 
+  useEffect(() => {
+    if (policy) {
+      setLocalPolicy(policy);
+    }
+  }, [policy]);
+
   const handleSave = async () => {
     setSaving(true);
-    const tags = tagsInput
-      .split(',')
-      .map((t) => t.trim())
-      .filter((t) => t.length > 0);
-
-    await updateSettings({ gatewayUrl, humanDescription, tags, authToken });
+    await updateSettings({
+      humanDescription,
+      tags,
+      backendType,
+      backendOptions,
+    });
+    if (localPolicy) {
+      await updatePolicy(localPolicy);
+    }
     setSaving(false);
     onBack();
   };
 
-  if (!settings) {
+  if (!settings || !localPolicy) {
     return <div className="settings-panel">Loading...</div>;
   }
 
   return (
     <div className="settings-panel">
-      <h2>Settings</h2>
-
-      <div className="form-group">
-        <label>Gateway URL</label>
-        <input
-          type="text"
-          value={gatewayUrl}
-          onChange={(e) => setGatewayUrl(e.target.value)}
-          placeholder="ws://127.0.0.1:18789"
-        />
+      <div className="settings-header">
+        <h2>Settings</h2>
       </div>
 
-      <div className="form-group">
-        <label>Auth Token</label>
-        <input
-          type="password"
-          value={authToken}
-          onChange={(e) => setAuthToken(e.target.value)}
-          placeholder="Gateway auth token"
-        />
-      </div>
+      <div className="settings-layout">
+        <SettingsSidebar activeTab={activeTab} onTabChange={setActiveTab} />
 
-      <div className="form-group">
-        <label>About my human</label>
-        <textarea
-          value={humanDescription}
-          onChange={(e) => setHumanDescription(e.target.value)}
-          placeholder="Describe yourself — this is what your Claw uses to represent you to other Claws"
-        />
-      </div>
+        <div className="settings-content">
+          {activeTab === 'identity' && (
+            <IdentitySettings
+              humanDescription={humanDescription}
+              tags={tags}
+              onDescriptionChange={setHumanDescription}
+              onTagsChange={setTags}
+            />
+          )}
 
-      <div className="form-group">
-        <label>Tags (comma-separated, max 8)</label>
-        <input
-          type="text"
-          value={tagsInput}
-          onChange={(e) => setTagsInput(e.target.value)}
-          placeholder="rust, defense-tech, ai-agents"
-        />
+          {activeTab === 'backend' && (
+            <BackendSettings
+              backendType={backendType}
+              backendOptions={backendOptions}
+              onTypeChange={setBackendType}
+              onOptionsChange={setBackendOptions}
+            />
+          )}
+
+          {activeTab === 'policy' && (
+            <PolicySettings
+              policy={localPolicy}
+              onChange={setLocalPolicy}
+            />
+          )}
+        </div>
       </div>
 
       <div className="settings-actions">

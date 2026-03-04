@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import type { NearbyPeerData, BleStatusData, AuraSettingsData } from '../types';
+import type { NearbyPeerData, BleStatusData, AuraSettingsData, BackendStatusData, EncounterPolicyData } from '../types';
 
 export function useNearbyPeers() {
   const [peers, setPeers] = useState<NearbyPeerData[]>([]);
@@ -25,16 +25,16 @@ export function useBleStatus() {
   return status;
 }
 
-export function useGatewayStatus() {
-  const [connected, setConnected] = useState(false);
+export function useBackendStatus() {
+  const [status, setStatus] = useState<BackendStatusData>({ connected: false, statusText: 'disconnected' });
 
   useEffect(() => {
-    window.auraAPI.getGatewayStatus().then((s) => setConnected(s.connected));
-    const unsub = window.auraAPI.onGatewayStatusChanged((s) => setConnected(s.connected));
+    window.auraAPI.getBackendStatus().then(setStatus);
+    const unsub = window.auraAPI.onBackendStatusChanged(setStatus);
     return unsub;
   }, []);
 
-  return connected;
+  return status;
 }
 
 export function useSettings() {
@@ -51,4 +51,20 @@ export function useSettings() {
   };
 
   return { settings, updateSettings };
+}
+
+export function useEncounterPolicy() {
+  const [policy, setPolicy] = useState<EncounterPolicyData | null>(null);
+
+  useEffect(() => {
+    window.auraAPI.getEncounterPolicy().then(setPolicy);
+  }, []);
+
+  const updatePolicy = async (partial: Partial<EncounterPolicyData>) => {
+    const updated = await window.auraAPI.updateEncounterPolicy(partial);
+    setPolicy(updated);
+    return updated;
+  };
+
+  return { policy, updatePolicy };
 }

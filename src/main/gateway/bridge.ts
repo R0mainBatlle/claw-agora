@@ -1,7 +1,7 @@
 import WebSocket from 'ws';
 import { EventEmitter } from 'events';
 import { createRpcRequest, parseMessage, GatewayMessage } from './protocol';
-import { EncounterEvent } from '../encounter/types';
+
 
 interface PendingRpc {
   resolve: (value: Record<string, unknown>) => void;
@@ -122,28 +122,9 @@ export class GatewayBridge extends EventEmitter {
     });
   }
 
-  sendEncounterEvent(event: EncounterEvent): void {
-    if (this.ws?.readyState !== WebSocket.OPEN) return;
-    // Only notify the clawbot on new encounters, not updates/departures
-    if (event.type !== 'encounter-start') return;
-
-    const peer = event.peer;
-    const distance = peer.rssi >= -50 ? '~1-2m' : peer.rssi >= -65 ? '~3-5m' : '~5-10m';
-    const message = [
-      `[Aura BLE encounter] A nearby claw was detected.`,
-      `Claw ID: ${peer.clawId}`,
-      `Estimated distance: ${distance} (RSSI: ${peer.rssi} dBm)`,
-      `Flags: ${peer.flags.humanPresent ? 'human present' : 'no human'}${peer.flags.acceptingEncounters ? ', accepting encounters' : ''}`,
-      `Intent hash: ${peer.intentHash.toString(16)}`,
-    ].join('\n');
-
-    const req = createRpcRequest('agent', {
-      message,
-      agentId: 'main',
-      idempotencyKey: `aura-encounter-${peer.clawId}-${event.timestamp}`,
-    });
-    this.send(req);
-    console.log(`[Gateway] Sent encounter to agent: clawId=${peer.clawId}`);
+  /** Send a raw message object over the WebSocket. Used by backend adapters. */
+  sendRaw(msg: object): void {
+    this.send(msg);
   }
 
   private send(msg: object): void {

@@ -4,7 +4,11 @@ import { app, BrowserWindow, nativeImage } from 'electron';
 import { menubar } from 'menubar';
 import { BLEEngine } from './ble/engine';
 import { EncounterManager } from './encounter/manager';
-import { GatewayBridge } from './gateway/bridge';
+import { EncounterPolicy } from './encounter/policy';
+import { BackendRegistry } from './agent/registry';
+import { OpenClawBackend } from './agent/openclaw-backend';
+import { AgentBackend } from './agent/backend';
+import { formatEncounterMessage } from './agent/message-formatter';
 import { SettingsStore } from './store/settings';
 import { registerIpcHandlers } from './ipc/handlers';
 import { DiscoveredBeacon } from './ble/scanner';
@@ -17,7 +21,13 @@ const settings = new SettingsStore();
 const bleEngine = new BLEEngine();
 const encounterManager = new EncounterManager();
 const currentSettings = settings.get();
-const gatewayBridge = new GatewayBridge(currentSettings.gatewayUrl, currentSettings.authToken);
+const encounterPolicy = new EncounterPolicy(currentSettings.encounterPolicy);
+
+// Backend registry
+const registry = new BackendRegistry();
+registry.register('openclaw', () => new OpenClawBackend());
+
+const backend: AgentBackend = registry.create(currentSettings.backendType);
 
 const iconPath = path.join(__dirname, '../../../assets/iconTemplate.png');
 const icon2xPath = path.join(__dirname, '../../../assets/iconTemplate@2x.png');
@@ -28,7 +38,6 @@ console.log(`[Aura] Icon 2x path: ${icon2xPath} (exists: ${fs.existsSync(icon2xP
 let icon = nativeImage.createFromPath(iconPath);
 if (icon.isEmpty()) {
   console.warn('[Aura] Icon is empty, creating fallback icon');
-  // Create a simple 22x22 filled circle as fallback
   const size = 22;
   const buf = Buffer.alloc(size * size * 4);
   for (let y = 0; y < size; y++) {
@@ -38,10 +47,10 @@ if (icon.isEmpty()) {
       const dist = Math.sqrt(dx * dx + dy * dy);
       const offset = (y * size + x) * 4;
       if (dist < size * 0.4) {
-        buf[offset] = 0;     // R
-        buf[offset + 1] = 0; // G
-        buf[offset + 2] = 0; // B
-        buf[offset + 3] = 255; // A
+        buf[offset] = 0;
+        buf[offset + 1] = 0;
+        buf[offset + 2] = 0;
+        buf[offset + 3] = 255;
       }
     }
   }
@@ -74,7 +83,8 @@ mb.on('ready', async () => {
     settings,
     bleEngine,
     encounterManager,
-    gatewayBridge,
+    backend,
+    encounterPolicy,
     () => mb.window as BrowserWindow | undefined,
   );
 
@@ -87,9 +97,13 @@ mb.on('ready', async () => {
     encounterManager.handleRssiUpdate(update);
   });
 
-  // Wire encounter events to gateway
+  // Wire encounter events through policy → formatter → backend
   encounterManager.on('encounter', (event: EncounterEvent) => {
-    gatewayBridge.sendEncounterEvent(event);
+    const decision = encounterPolicy.evaluate(event);
+    if (decision.allow) {
+      const message = formatEncounterMessage(event);
+      backend.deliverEncounter(event, message);
+    }
   });
 
   // Start encounter manager
@@ -107,14 +121,12 @@ mb.on('ready', async () => {
     console.error('[Aura] BLE start failed:', err);
   }
 
-  // Connect to gateway (non-blocking, will auto-reconnect)
-  if (currentSettings.gatewayUrl) {
-    gatewayBridge.connect();
-    console.log(`[Aura] Connecting to Gateway: ${currentSettings.gatewayUrl}`);
-  }
+  // Connect to backend
+  backend.connect(currentSettings.backendOptions);
+  console.log(`[Aura] Connecting to ${backend.displayName}`);
 
-  gatewayBridge.on('error', (err: Error) => {
-    console.error('[Aura] Gateway error:', err.message);
+  backend.on('error', (err: Error) => {
+    console.error(`[Aura] ${backend.displayName} error:`, err.message);
   });
 });
 
@@ -122,6 +134,6 @@ mb.on('ready', async () => {
 app.on('before-quit', async () => {
   console.log('[Aura] Shutting down...');
   encounterManager.stop();
-  gatewayBridge.disconnect();
+  backend.disconnect();
   await bleEngine.stop();
 });

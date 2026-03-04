@@ -5,10 +5,12 @@ const CHANNELS = {
   UPDATE_SETTINGS: 'settings:update',
   GET_BLE_STATUS: 'ble:status',
   GET_NEARBY_PEERS: 'ble:nearby-peers',
-  GET_GATEWAY_STATUS: 'gateway:status',
+  GET_BACKEND_STATUS: 'backend:status',
+  GET_ENCOUNTER_POLICY: 'policy:get',
+  UPDATE_ENCOUNTER_POLICY: 'policy:update',
   NEARBY_PEERS_UPDATED: 'event:nearby-peers-updated',
   BLE_STATUS_CHANGED: 'event:ble-status-changed',
-  GATEWAY_STATUS_CHANGED: 'event:gateway-status-changed',
+  BACKEND_STATUS_CHANGED: 'event:backend-status-changed',
 } as const;
 
 const auraAPI = {
@@ -21,7 +23,12 @@ const auraAPI = {
 
   getNearbyPeers: () => ipcRenderer.invoke(CHANNELS.GET_NEARBY_PEERS),
 
-  getGatewayStatus: () => ipcRenderer.invoke(CHANNELS.GET_GATEWAY_STATUS),
+  getBackendStatus: () => ipcRenderer.invoke(CHANNELS.GET_BACKEND_STATUS),
+
+  getEncounterPolicy: () => ipcRenderer.invoke(CHANNELS.GET_ENCOUNTER_POLICY),
+
+  updateEncounterPolicy: (partial: Record<string, unknown>) =>
+    ipcRenderer.invoke(CHANNELS.UPDATE_ENCOUNTER_POLICY, partial),
 
   onNearbyPeersUpdated: (callback: (peers: unknown[]) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, peers: unknown[]) => callback(peers);
@@ -35,10 +42,10 @@ const auraAPI = {
     return () => ipcRenderer.removeListener(CHANNELS.BLE_STATUS_CHANGED, listener);
   },
 
-  onGatewayStatusChanged: (callback: (status: unknown) => void) => {
+  onBackendStatusChanged: (callback: (status: unknown) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, status: unknown) => callback(status);
-    ipcRenderer.on(CHANNELS.GATEWAY_STATUS_CHANGED, listener);
-    return () => ipcRenderer.removeListener(CHANNELS.GATEWAY_STATUS_CHANGED, listener);
+    ipcRenderer.on(CHANNELS.BACKEND_STATUS_CHANGED, listener);
+    return () => ipcRenderer.removeListener(CHANNELS.BACKEND_STATUS_CHANGED, listener);
   },
 };
 

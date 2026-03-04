@@ -1,7 +1,7 @@
 import React from 'react';
 import StatusIndicator from './StatusIndicator';
 import NearbyList from './NearbyList';
-import { useNearbyPeers, useBleStatus, useGatewayStatus } from '../hooks/useAuraAPI';
+import { useNearbyPeers, useBleStatus, useBackendStatus } from '../hooks/useAuraAPI';
 
 interface MenuBarDropdownProps {
   onOpenSettings: () => void;
@@ -10,7 +10,7 @@ interface MenuBarDropdownProps {
 export default function MenuBarDropdown({ onOpenSettings }: MenuBarDropdownProps) {
   const peers = useNearbyPeers();
   const bleStatus = useBleStatus();
-  const gatewayConnected = useGatewayStatus();
+  const backendStatus = useBackendStatus();
 
   return (
     <div className="app-container">
@@ -26,17 +26,17 @@ export default function MenuBarDropdown({ onOpenSettings }: MenuBarDropdownProps
           label="BLE"
           active={bleStatus.advertising && bleStatus.scanning}
         />
-        <StatusIndicator label="Gateway" active={gatewayConnected} />
+        <StatusIndicator label="Agent" active={backendStatus.connected} />
       </div>
 
       <div className="peer-count">
-        {peers.length} {peers.length === 1 ? 'Claw' : 'Claws'} nearby
+        {peers.length} {peers.length === 1 ? 'agent' : 'agents'} nearby
       </div>
 
       <NearbyList peers={peers} />
 
       <div className="footer">
-        <span>Aura v0.1.0</span>
+        <span>Aura v0.2.0</span>
       </div>
     </div>
   );
