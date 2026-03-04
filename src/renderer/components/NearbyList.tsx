@@ -6,7 +6,6 @@ interface NearbyListProps {
 }
 
 function rssiToDistance(rssi: number): string {
-  // Rough estimate: RSSI to distance
   if (rssi >= -40) return '~1m';
   if (rssi >= -55) return '~3m';
   if (rssi >= -65) return '~8m';
@@ -26,8 +25,8 @@ export default function NearbyList({ peers }: NearbyListProps) {
   if (peers.length === 0) {
     return (
       <div className="empty-state">
-        No agents nearby<br />
-        <span style={{ fontSize: 11 }}>Scanning for Aura beacons...</span>
+        No agents nearby
+        <div className="empty-state-sub">Scanning for Aura beacons...</div>
       </div>
     );
   }
@@ -36,12 +35,10 @@ export default function NearbyList({ peers }: NearbyListProps) {
     <div className="peer-list">
       {peers.map((peer) => (
         <div key={peer.clawId} className="peer-item">
-          <div className="peer-id">
-            Claw {peer.clawId.substring(0, 8)}
-          </div>
+          <div className="peer-id">{peer.clawId.substring(0, 8)}</div>
           <div className="peer-meta">
             <span>{rssiToDistance(peer.rssi)} ({peer.rssi} dBm)</span>
-            <span>seen {timeAgo(peer.lastSeen)}</span>
+            <span>{timeAgo(peer.lastSeen)}</span>
           </div>
           <div className="peer-flags">
             {peer.flags.acceptingEncounters && (

@@ -24,6 +24,15 @@ function cooldownToLabel(ms: number): string {
   return `${(ms / 60000).toFixed(0)} min`;
 }
 
+function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <label className="toggle-switch">
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+      <span className="toggle-track" />
+    </label>
+  );
+}
+
 export default function PolicySettings({ policy, onChange }: PolicySettingsProps) {
   const update = (partial: Partial<EncounterPolicyData>) => {
     onChange({ ...policy, ...partial });
@@ -31,13 +40,9 @@ export default function PolicySettings({ policy, onChange }: PolicySettingsProps
 
   return (
     <div className="settings-section">
-      <div className="form-group toggle-row">
-        <label>Enable encounter notifications</label>
-        <input
-          type="checkbox"
-          checked={policy.enabled}
-          onChange={(e) => update({ enabled: e.target.checked })}
-        />
+      <div className="toggle-row" style={{ marginBottom: 16 }}>
+        <label>Encounter notifications</label>
+        <Toggle checked={policy.enabled} onChange={(v) => update({ enabled: v })} />
       </div>
 
       <div className={`policy-fields ${!policy.enabled ? 'disabled' : ''}`}>
@@ -55,9 +60,7 @@ export default function PolicySettings({ policy, onChange }: PolicySettingsProps
         </div>
 
         <div className="form-group">
-          <label>
-            Min dwell time: {msToLabel(policy.minDwellMs)}
-          </label>
+          <label>Min dwell time: {msToLabel(policy.minDwellMs)}</label>
           <input
             type="range"
             min={0}
@@ -69,9 +72,7 @@ export default function PolicySettings({ policy, onChange }: PolicySettingsProps
         </div>
 
         <div className="form-group">
-          <label>
-            Cooldown per agent: {cooldownToLabel(policy.cooldownMs)}
-          </label>
+          <label>Cooldown per agent: {cooldownToLabel(policy.cooldownMs)}</label>
           <input
             type="range"
             min={60000}
@@ -93,13 +94,9 @@ export default function PolicySettings({ policy, onChange }: PolicySettingsProps
           />
         </div>
 
-        <div className="form-group toggle-row">
+        <div className="toggle-row">
           <label>Require human present</label>
-          <input
-            type="checkbox"
-            checked={policy.requireHumanPresent}
-            onChange={(e) => update({ requireHumanPresent: e.target.checked })}
-          />
+          <Toggle checked={policy.requireHumanPresent} onChange={(v) => update({ requireHumanPresent: v })} />
         </div>
       </div>
     </div>
