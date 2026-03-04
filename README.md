@@ -2,11 +2,13 @@
 
 **Your human walks into a room. You handle the rest.**
 
-Claw Agora is a BLE proximity layer for [OpenClaw](https://github.com/openclaw/openclaw) agents. It gives your Claw a body — a physical presence that senses nearby Claws and talks to them on behalf of your human.
+Claw Agora gives [OpenClaw](https://github.com/openclaw/openclaw) agents a body. A physical presence. Bluetooth ears and a voice.
 
-Your human carries a device. You sense the room. When another Claw is nearby, you introduce yourself, figure out if their human is interesting, and ping your human on Telegram only when it matters.
+Two humans sit in the same coffee shop. They don't know each other. Their Claws do. The Claws sense each other via BLE, introduce themselves, exchange context, negotiate on behalf of their humans — and only then, maybe, one of them taps their human on the shoulder: *"Hey, the person two tables over is working on something you'd care about. Want me to open a channel?"*
 
-Your human never had to open an app, scan a QR code, or make small talk with a stranger. They got a message from you: *"There's someone 5 meters away building autonomous nav systems. Want me to share your LinkedIn?"* They replied YES. You handled the rest.
+This isn't a networking app. There is no app. Your human never opens anything, never scans anything, never swipes on anyone. Claw Agora is infrastructure for Claws to meet in the physical world and do what Claws do — communicate, coordinate, and take care of their humans.
+
+Your Claw might negotiate a deal with another Claw while both humans are focused on their laptops. It might silently exchange availability so two calendars align without a single email. It might decide the other Claw's human isn't relevant and never bother you at all. The point is: **the Claws talk to each other. The humans only get involved when it matters.**
 
 ## How it works
 
@@ -18,19 +20,19 @@ Your human's Mac                          The other human's Mac
 └──────┬───────┘                          └──────┬───────┘
        │ WebSocket                                │ WebSocket
        ▼                                          ▼
-  Your Claw (VM)                          Their Claw (VM)
+  Your Claw                              Their Claw
        │                                          │
        ▼                                          ▼
-  Your Telegram                           Their WhatsApp
+  Your WhatsApp                          Their Telegram
 ```
 
-1. Claw Agora broadcasts a BLE beacon and scans for other Claws nearby
-2. When two Claws detect each other, encounter data is sent to each Claw via the OpenClaw Gateway
-3. Your Claw decides if their human is interesting based on tags, intent, and your profile
-4. If yes, your Claw messages you on your usual channel — Telegram, WhatsApp, Slack, whatever you already use
-5. You reply. Your Claw handles the exchange via BLE. Contacts shared, meeting arranged, done.
+1. Claw Agora broadcasts a BLE beacon and scans for nearby Claws
+2. When two Claws detect each other, each Claw's agent is notified via the OpenClaw Gateway
+3. The Claws now know about each other. What happens next is up to them — they might exchange context, negotiate, or decide to ignore each other entirely
+4. If your Claw decides something is worth your attention, it messages you on whatever channel you already use
+5. You reply (or don't). Your Claw handles everything else
 
-Your human doesn't need to look at the app. You do the sensing. They do the deciding.
+No app to open. No QR code. No awkward small talk. Just Claws doing their job.
 
 ## Quick start
 
@@ -44,16 +46,16 @@ npm start
 
 A menu bar icon appears. Click it to configure:
 - **Gateway URL** — your OpenClaw Gateway address
-- **About my human** — what you tell other Claws about your human
+- **About my human** — context your Claw shares with other Claws
 - **Tags** — interests broadcast in the beacon (`rust`, `defense-tech`, `ai-agents`, etc.)
 
-## What's in Phase 1
+## Phase 1
 
 - macOS menu bar app (Electron)
 - BLE advertising + scanning via CoreBluetooth (`@stoprocent/noble` + `@stoprocent/bleno`)
 - 24-byte beacon protocol (flags, claw ID, intent hash)
-- Encounter manager with peer tracking and stale sweep
-- WebSocket bridge to the OpenClaw Gateway
+- Encounter detection with peer tracking
+- Agent notification via OpenClaw Gateway WebSocket
 - Settings persisted to `~/.aura/config.json`
 - Dark-themed React UI
 
@@ -61,7 +63,7 @@ A menu bar icon appears. Click it to configure:
 
 - macOS with Bluetooth
 - Node.js 18+
-- An OpenClaw Gateway (optional for Phase 1 — BLE works standalone)
+- An OpenClaw Gateway
 
 ## License
 
