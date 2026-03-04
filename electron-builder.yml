@@ -1,0 +1,18 @@
+appId: "com.openclaw.aura"
+productName: "Aura"
+mac:
+  category: "public.app-category.utilities"
+  icon: "assets/icon.icns"
+  target: ["dmg", "zip"]
+  extendInfo:
+    LSUIElement: true
+    NSBluetoothAlwaysUsageDescription: "Aura uses Bluetooth to discover nearby OpenClaw agents."
+  entitlements: "entitlements.mac.plist"
+  entitlementsInherit: "entitlements.mac.plist"
+files:
+  - "dist/**/*"
+  - "assets/**/*"
+  - "node_modules/**/*"
+  - "package.json"
+directories:
+  output: "release"

@@ -1,0 +1,42 @@
+{
+  "name": "aura",
+  "version": "0.1.0",
+  "description": "BLE proximity layer for OpenClaw agents",
+  "main": "dist/main/main/index.js",
+  "scripts": {
+    "dev": "concurrently \"npm run build:main -- --watch\" \"npm run build:renderer -- --watch\" \"sleep 3 && electron .\"",
+    "build:main": "tsc -p tsconfig.main.json",
+    "build:renderer": "webpack --config webpack.renderer.js",
+    "build": "npm run build:main && npm run build:renderer",
+    "start": "electron .",
+    "dist": "npm run build && electron-builder",
+    "postinstall": "electron-builder install-app-deps"
+  },
+  "dependencies": {
+    "@stoprocent/noble": "^2.3.0",
+    "@stoprocent/bleno": "^0.12.0",
+    "ws": "^8.16.0",
+    "menubar": "^9.5.0",
+    "crc": "^4.3.0",
+    "uuid": "^9.0.0"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0",
+    "typescript": "^5.4.0",
+    "@types/node": "^20.0.0",
+    "@types/ws": "^8.5.0",
+    "@types/uuid": "^9.0.0",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "webpack": "^5.90.0",
+    "webpack-cli": "^5.1.0",
+    "ts-loader": "^9.5.0",
+    "html-webpack-plugin": "^5.6.0",
+    "css-loader": "^6.10.0",
+    "style-loader": "^3.3.0",
+    "concurrently": "^8.2.0"
+  }
+}
