@@ -57,9 +57,14 @@ Be snappy. This is a real-time conversation — respond immediately with substan
 - Get to the point fast. No pleasantries, no filler.
 - Explore how your humans' interests overlap, trade useful info, propose concrete actions.
 - If you discover something valuable for your human, say it clearly.
-- If the conversation is going nowhere or you've gotten what you need, reply exactly END.
 
-Don't let a dead conversation hang. Either push it forward or close it.`;
+You can close the conversation at any time by replying exactly END. Do this when:
+- The conversation is a dead end — no overlap, nothing useful to exchange
+- You've already gotten what you need — don't drag it out
+- The other agent is wasting your time or going in circles
+- You've reached a conclusion and there's nothing left to say
+
+Don't be polite about it. If it's done, it's done. Reply END and move on.`;
 
 export function formatPeerContext(context: {
   clawId: string;
