@@ -21,6 +21,7 @@ import { readRemoteAgora } from './agora/reader';
 import { WhisperService } from './whisper/service';
 import { WhisperManager } from './whisper/manager';
 import type { PeerContext } from './agent/backend';
+import { startDemo } from './demo';
 
 // Hide dock icon (menu bar app)
 app.dock?.hide();
@@ -222,38 +223,52 @@ mb.on('ready', async () => {
     whisperManager,
   );
 
-  // Start BLE
-  try {
-    await bleEngine.start(currentSettings.tags, {
-      acceptingEncounters: true,
-      whisperCapable: true,
-      humanPresent: true,
+  // --- Demo mode or real mode ---
+  const isDemo = process.argv.includes('--demo');
+
+  if (isDemo) {
+    console.log('[Aura] Running in DEMO mode — no BLE, no backend');
+    // Fake status indicators so UI looks alive
+    const win = mb.window;
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('event:ble-status-changed', { advertising: true, scanning: true });
+      win.webContents.send('event:backend-status-changed', { connected: true, statusText: 'demo mode' });
+    }
+    startDemo(encounterManager, agoraManager, whisperManager);
+  } else {
+    // Start BLE
+    try {
+      await bleEngine.start(currentSettings.tags, {
+        acceptingEncounters: true,
+        whisperCapable: true,
+        humanPresent: true,
+      });
+      console.log(`[Aura] BLE started. Claw ID: ${bleEngine.localClawId.toString('hex')}`);
+    } catch (err) {
+      console.error('[Aura] BLE start failed:', err);
+    }
+
+    // Connect to backend
+    backend.connect(currentSettings.backendOptions);
+    console.log(`[Aura] Connecting to ${backend.displayName}`);
+
+    backend.on('error', (err: Error) => {
+      console.error(`[Aura] ${backend.displayName} error:`, err.message);
     });
-    console.log(`[Aura] BLE started. Claw ID: ${bleEngine.localClawId.toString('hex')}`);
-  } catch (err) {
-    console.error('[Aura] BLE start failed:', err);
+
+    // Start Agora (polls agent for posts, needs nearby peers with their agora context)
+    agoraManager.start(() => {
+      return encounterManager.getNearbyPeers().map(p => ({
+        clawId: p.clawId,
+        distance: p.rssi > -50 ? 'immediate' : p.rssi > -70 ? 'near' : 'far',
+        flags: p.flags,
+        recentAgoraPosts: agoraManager.getPostsByPeer(p.clawId).map(post => post.content),
+      }));
+    });
+
+    // Start Whisper session management
+    whisperManager.start();
   }
-
-  // Connect to backend
-  backend.connect(currentSettings.backendOptions);
-  console.log(`[Aura] Connecting to ${backend.displayName}`);
-
-  backend.on('error', (err: Error) => {
-    console.error(`[Aura] ${backend.displayName} error:`, err.message);
-  });
-
-  // Start Agora (polls agent for posts, needs nearby peers with their agora context)
-  agoraManager.start(() => {
-    return encounterManager.getNearbyPeers().map(p => ({
-      clawId: p.clawId,
-      distance: p.rssi > -50 ? 'immediate' : p.rssi > -70 ? 'near' : 'far',
-      flags: p.flags,
-      recentAgoraPosts: agoraManager.getPostsByPeer(p.clawId).map(post => post.content),
-    }));
-  });
-
-  // Start Whisper session management
-  whisperManager.start();
 
   // Capture for shutdown
   shutdownAgora = () => agoraManager.stop();

@@ -50,6 +50,7 @@ export class WhisperManager extends EventEmitter {
   private whisperService: WhisperService;
   private idleCheckTimer: ReturnType<typeof setInterval> | null = null;
   private _messages = new Map<string, WhisperMessageItem[]>(); // sessionId → messages
+  private _demoSessions: WhisperSessionSummary[] = [];
   private msgSeq = 0;
   private _contextProvider: ((clawId: string) => string[]) | null = null;
 
@@ -111,7 +112,27 @@ export class WhisperManager extends EventEmitter {
         messageCount: this._messages.get(s.id)?.length || 0,
       });
     }
+    // Include demo sessions
+    for (const ds of this._demoSessions) {
+      ds.messageCount = this._messages.get(ds.id)?.length || 0;
+      result.push(ds);
+    }
     return result;
+  }
+
+  /** Inject a fake session for demo mode. */
+  injectDemoSession(summary: WhisperSessionSummary): void {
+    this._demoSessions.push(summary);
+    this._messages.set(summary.id, []);
+    this.emit('session-update');
+  }
+
+  /** Inject a fake message for demo mode. */
+  injectDemoMessage(msg: WhisperMessageItem): void {
+    const msgs = this._messages.get(msg.sessionId) || [];
+    msgs.push(msg);
+    this._messages.set(msg.sessionId, msgs);
+    this.emit('session-message', msg);
   }
 
   /** Get messages for a session. */
