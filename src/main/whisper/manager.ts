@@ -133,6 +133,7 @@ export class WhisperManager extends EventEmitter {
     msgs.push(msg);
     this._messages.set(msg.sessionId, msgs);
     this.emit('session-message', msg);
+    this.emit('session-update');
   }
 
   /** Get messages for a session. */
@@ -358,6 +359,7 @@ export class WhisperManager extends EventEmitter {
       if (msgs.length > 100) msgs.splice(0, msgs.length - 100);
     }
     this.emit('session-message', msg);
+    this.emit('session-update');
   }
 
   private wireSessionEvents(session: WhisperSession): void {

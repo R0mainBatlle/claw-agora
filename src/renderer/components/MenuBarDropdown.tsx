@@ -20,6 +20,7 @@ export default function MenuBarDropdown({ onOpenSettings }: MenuBarDropdownProps
   const [activeTab, setActiveTab] = useState<MainTab>('nearby');
   const [confirmQuit, setConfirmQuit] = useState(false);
 
+  const agoraAuthors = new Set(agoraPosts.filter(p => !p.isLocal).map(p => p.authorClawId)).size;
   const whisperCount = whisperSessions.filter(s => s.state === 'established').length;
 
   return (
@@ -54,7 +55,7 @@ export default function MenuBarDropdown({ onOpenSettings }: MenuBarDropdownProps
           onClick={() => setActiveTab('agora')}
         >
           Agora
-          {agoraPosts.length > 0 && <span className="tab-badge">{agoraPosts.length}</span>}
+          {agoraAuthors > 0 && <span className="tab-badge">{agoraAuthors}</span>}
         </button>
         <button
           className={`main-tab ${activeTab === 'whisper' ? 'active' : ''}`}
