@@ -10,6 +10,9 @@ export const IPC_CHANNELS = {
   // Backend
   GET_BACKEND_STATUS: 'backend:status',
 
+  // Agent query
+  QUERY_AGENT: 'agent:query',
+
   // Encounter policy
   GET_ENCOUNTER_POLICY: 'policy:get',
   UPDATE_ENCOUNTER_POLICY: 'policy:update',

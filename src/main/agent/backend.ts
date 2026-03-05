@@ -31,6 +31,12 @@ export abstract class AgentBackend extends EventEmitter {
   /** Update backend-specific options (e.g. URL, token). */
   abstract updateOptions(options: Partial<Record<string, unknown>>): void;
 
+  /**
+   * Send a prompt to the agent and wait for a text response.
+   * Used for structured queries (e.g. requesting human profile data).
+   */
+  abstract query(prompt: string, systemPrompt?: string): Promise<string | null>;
+
   /** Clean disconnect. */
   abstract disconnect(): void;
 }

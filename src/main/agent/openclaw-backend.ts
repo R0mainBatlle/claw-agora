@@ -3,7 +3,6 @@ import path from 'node:path';
 import os from 'node:os';
 import { AgentBackend, AgentBackendStatus } from './backend';
 import { GatewayBridge } from '../gateway/bridge';
-import { createRpcRequest } from '../gateway/protocol';
 import { EncounterEvent } from '../encounter/types';
 
 export interface OpenClawOptions {
@@ -55,13 +54,39 @@ export class OpenClawBackend extends AgentBackend {
   deliverEncounter(event: EncounterEvent, message: string): void {
     if (!this.bridge?.connected) return;
 
-    const req = createRpcRequest('agent', {
+    this.bridge.sendRpc('agent', {
       message,
       agentId: 'main',
       idempotencyKey: `aura-encounter-${event.peer.clawId}-${event.timestamp}`,
-    });
-    this.bridge.sendRaw(req);
+    }).catch(() => { /* fire-and-forget */ });
     console.log(`[OpenClaw] Sent encounter to agent: clawId=${event.peer.clawId}`);
+  }
+
+  async query(prompt: string, systemPrompt?: string): Promise<string | null> {
+    if (!this.bridge?.connected) return null;
+
+    const params: Record<string, unknown> = {
+      message: prompt,
+      agentId: 'main',
+      idempotencyKey: `aura-query-${Date.now()}`,
+      sessionKey: 'aura-internal',
+    };
+    if (systemPrompt) {
+      params.extraSystemPrompt = systemPrompt;
+    }
+
+    try {
+      const result = await this.bridge.sendRpc('agent', params, {
+        expectFinal: true,
+        timeoutMs: 120_000,
+      });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const payloads = (result as any)?.result?.payloads;
+      return payloads?.[0]?.text || null;
+    } catch (err) {
+      console.error('[OpenClaw] Query failed:', (err as Error).message);
+      return null;
+    }
   }
 
   getStatus(): AgentBackendStatus {

@@ -7,6 +7,7 @@ interface PendingRpc {
   resolve: (value: Record<string, unknown>) => void;
   reject: (reason: Error) => void;
   timer: ReturnType<typeof setTimeout>;
+  expectFinal?: boolean;
 }
 
 export class GatewayBridge extends EventEmitter {
@@ -97,6 +98,10 @@ export class GatewayBridge extends EventEmitter {
     } else if (msg.type === 'res') {
       const pending = this.pendingRpcs.get(msg.id);
       if (pending) {
+        // Two-phase response: skip the "accepted" ack, wait for final
+        if (pending.expectFinal && msg.ok && msg.payload?.status === 'accepted') {
+          return;
+        }
         clearTimeout(pending.timer);
         this.pendingRpcs.delete(msg.id);
         if (msg.ok) {
@@ -110,14 +115,24 @@ export class GatewayBridge extends EventEmitter {
     }
   }
 
-  async sendRpc(method: string, params: Record<string, unknown>): Promise<Record<string, unknown>> {
+  async sendRpc(
+    method: string,
+    params: Record<string, unknown>,
+    opts?: { expectFinal?: boolean; timeoutMs?: number },
+  ): Promise<Record<string, unknown>> {
     const req = createRpcRequest(method, params);
+    const timeoutMs = opts?.timeoutMs || 10000;
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pendingRpcs.delete(req.id);
         reject(new Error('RPC timeout'));
-      }, 10000);
-      this.pendingRpcs.set(req.id, { resolve, reject, timer });
+      }, timeoutMs);
+      this.pendingRpcs.set(req.id, {
+        resolve,
+        reject,
+        timer,
+        expectFinal: opts?.expectFinal,
+      });
       this.send(req);
     });
   }

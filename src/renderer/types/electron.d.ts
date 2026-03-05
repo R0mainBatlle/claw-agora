@@ -6,6 +6,7 @@ interface AuraAPI {
   getBleStatus(): Promise<BleStatusData>;
   getNearbyPeers(): Promise<NearbyPeerData[]>;
   getBackendStatus(): Promise<BackendStatusData>;
+  queryAgent(prompt: string, systemPrompt?: string): Promise<string | null>;
   getEncounterPolicy(): Promise<EncounterPolicyData>;
   updateEncounterPolicy(partial: Partial<EncounterPolicyData>): Promise<EncounterPolicyData>;
   onNearbyPeersUpdated(callback: (peers: NearbyPeerData[]) => void): () => void;

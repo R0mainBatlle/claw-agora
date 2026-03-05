@@ -6,6 +6,7 @@ const CHANNELS = {
   GET_BLE_STATUS: 'ble:status',
   GET_NEARBY_PEERS: 'ble:nearby-peers',
   GET_BACKEND_STATUS: 'backend:status',
+  QUERY_AGENT: 'agent:query',
   GET_ENCOUNTER_POLICY: 'policy:get',
   UPDATE_ENCOUNTER_POLICY: 'policy:update',
   NEARBY_PEERS_UPDATED: 'event:nearby-peers-updated',
@@ -24,6 +25,9 @@ const auraAPI = {
   getNearbyPeers: () => ipcRenderer.invoke(CHANNELS.GET_NEARBY_PEERS),
 
   getBackendStatus: () => ipcRenderer.invoke(CHANNELS.GET_BACKEND_STATUS),
+
+  queryAgent: (prompt: string, systemPrompt?: string) =>
+    ipcRenderer.invoke(CHANNELS.QUERY_AGENT, prompt, systemPrompt),
 
   getEncounterPolicy: () => ipcRenderer.invoke(CHANNELS.GET_ENCOUNTER_POLICY),
 

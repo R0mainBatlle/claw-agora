@@ -49,6 +49,10 @@ export function registerIpcHandlers(
     return backend.getStatus();
   });
 
+  ipcMain.handle(IPC_CHANNELS.QUERY_AGENT, async (_event, prompt: string, systemPrompt?: string) => {
+    return backend.query(prompt, systemPrompt);
+  });
+
   ipcMain.handle(IPC_CHANNELS.GET_ENCOUNTER_POLICY, () => {
     return encounterPolicy.getConfig();
   });
