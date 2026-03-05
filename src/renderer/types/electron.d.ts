@@ -21,6 +21,8 @@ interface AuraAPI {
   getAgoraPosts(): Promise<AgoraPostData[]>;
   getWhisperSessions(): Promise<WhisperSessionData[]>;
   getWhisperMessages(sessionId: string): Promise<WhisperMessageData[]>;
+  getActivityLog(type?: string, limit?: number): Promise<unknown[]>;
+  quitApp(): Promise<void>;
   onNearbyPeersUpdated(callback: (peers: NearbyPeerData[]) => void): () => void;
   onBleStatusChanged(callback: (status: BleStatusData) => void): () => void;
   onBackendStatusChanged(callback: (status: BackendStatusData) => void): () => void;

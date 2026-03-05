@@ -12,6 +12,8 @@ const CHANNELS = {
   GET_AGORA_POSTS: 'agora:get-posts',
   GET_WHISPER_SESSIONS: 'whisper:get-sessions',
   GET_WHISPER_MESSAGES: 'whisper:get-messages',
+  GET_ACTIVITY_LOG: 'activity:get-recent',
+  APP_QUIT: 'app:quit',
   NEARBY_PEERS_UPDATED: 'event:nearby-peers-updated',
   BLE_STATUS_CHANGED: 'event:ble-status-changed',
   BACKEND_STATUS_CHANGED: 'event:backend-status-changed',
@@ -46,6 +48,11 @@ const auraAPI = {
 
   getWhisperMessages: (sessionId: string) =>
     ipcRenderer.invoke(CHANNELS.GET_WHISPER_MESSAGES, sessionId),
+
+  getActivityLog: (type?: string, limit?: number) =>
+    ipcRenderer.invoke(CHANNELS.GET_ACTIVITY_LOG, type, limit),
+
+  quitApp: () => ipcRenderer.invoke(CHANNELS.APP_QUIT),
 
   // Event listeners
   onNearbyPeersUpdated: (callback: (peers: unknown[]) => void) => {

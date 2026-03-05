@@ -18,6 +18,7 @@ export default function MenuBarDropdown({ onOpenSettings }: MenuBarDropdownProps
   const agoraPosts = useAgoraPosts();
   const whisperSessions = useWhisperSessions();
   const [activeTab, setActiveTab] = useState<MainTab>('nearby');
+  const [confirmQuit, setConfirmQuit] = useState(false);
 
   const whisperCount = whisperSessions.filter(s => s.state === 'established').length;
 
@@ -29,6 +30,14 @@ export default function MenuBarDropdown({ onOpenSettings }: MenuBarDropdownProps
           <StatusIndicator label="BLE" active={bleStatus.advertising && bleStatus.scanning} />
           <StatusIndicator label="Agent" active={backendStatus.connected} />
           <button onClick={onOpenSettings} title="Settings">&#9881;</button>
+          {confirmQuit ? (
+            <>
+              <button onClick={() => window.auraAPI.quitApp()} title="Confirm quit" style={{ fontSize: '0.7em', opacity: 0.9, color: '#ff5555' }}>Quit?</button>
+              <button onClick={() => setConfirmQuit(false)} title="Cancel" style={{ fontSize: '0.7em', opacity: 0.6 }}>No</button>
+            </>
+          ) : (
+            <button onClick={() => setConfirmQuit(true)} title="Quit Aura" style={{ opacity: 0.6 }}>&#x2716;</button>
+          )}
         </div>
       </div>
 

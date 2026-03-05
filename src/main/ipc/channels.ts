@@ -24,6 +24,12 @@ export const IPC_CHANNELS = {
   GET_WHISPER_SESSIONS: 'whisper:get-sessions',
   GET_WHISPER_MESSAGES: 'whisper:get-messages',
 
+  // Activity log
+  GET_ACTIVITY_LOG: 'activity:get-recent',
+
+  // App
+  APP_QUIT: 'app:quit',
+
   // Events (main -> renderer)
   NEARBY_PEERS_UPDATED: 'event:nearby-peers-updated',
   BLE_STATUS_CHANGED: 'event:ble-status-changed',

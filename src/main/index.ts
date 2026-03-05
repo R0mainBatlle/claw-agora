@@ -11,6 +11,7 @@ import { OpenClawBackend } from './agent/openclaw-backend';
 import { AgentBackend } from './agent/backend';
 import { formatEncounterMessage } from './agent/message-formatter';
 import { SettingsStore } from './store/settings';
+import { ActivityLog } from './store/activity-log';
 import { registerIpcHandlers } from './ipc/handlers';
 import { DiscoveredBeacon } from './ble/scanner';
 import { EncounterEvent } from './encounter/types';
@@ -27,6 +28,7 @@ import { startDemo } from './demo';
 app.dock?.hide();
 
 const settings = new SettingsStore();
+const activityLog = new ActivityLog();
 const bleEngine = new BLEEngine();
 const encounterManager = new EncounterManager();
 const currentSettings = settings.get();
@@ -89,6 +91,11 @@ const mb = menubar({
 mb.on('ready', async () => {
   console.log('[Aura] Menu bar app ready');
 
+  // Prune old activity log entries on startup
+  activityLog.prune().catch(err =>
+    console.error('[ActivityLog] Prune failed:', (err as Error).message),
+  );
+
   // Apply Liquid Glass to the window
   const win = mb.window;
   if (win) {
@@ -118,6 +125,22 @@ mb.on('ready', async () => {
     }
   });
 
+  // Log encounters to activity log
+  encounterManager.on('encounter', (event: EncounterEvent) => {
+    if (event.type === 'encounter-start' || event.type === 'encounter-end') {
+      activityLog.append({
+        type: 'encounter',
+        timestamp: event.timestamp,
+        data: {
+          eventType: event.type,
+          clawId: event.peer.clawId,
+          rssi: event.peer.rssi,
+          flags: event.peer.flags,
+        },
+      });
+    }
+  });
+
   // Start encounter manager
   encounterManager.start();
 
@@ -128,6 +151,19 @@ mb.on('ready', async () => {
 
   // Register agora GATT service
   bleEngine.advertiser.addService(agoraService.service);
+
+  // Log agora posts to activity log
+  agoraManager.on('post', (item) => {
+    activityLog.append({
+      type: 'agora-post',
+      timestamp: item.timestamp,
+      data: {
+        authorClawId: item.authorClawId,
+        content: item.content.substring(0, 256),
+        isLocal: item.isLocal,
+      },
+    });
+  });
 
   // Handle remote posts submitted to our board
   agoraService.on('remote-post', (post) => {
@@ -158,9 +194,31 @@ mb.on('ready', async () => {
 
   whisperManager.on('session-established', (sessionId: string, peerClawId: string) => {
     console.log(`[Aura] Whisper session established: ${sessionId.substring(0, 8)} with ${peerClawId.substring(0, 8)}`);
+    activityLog.append({
+      type: 'whisper-session',
+      timestamp: Date.now(),
+      data: { sessionId, peerClawId, event: 'established' },
+    });
   });
   whisperManager.on('session-closed', (sessionId: string, peerClawId: string, reason: string) => {
     console.log(`[Aura] Whisper session closed: ${sessionId.substring(0, 8)} — ${reason}`);
+    activityLog.append({
+      type: 'whisper-session',
+      timestamp: Date.now(),
+      data: { sessionId, peerClawId, event: 'closed', reason },
+    });
+  });
+  whisperManager.on('session-message', (msg: { sessionId: string; peerClawId: string; direction: string; content: string }) => {
+    activityLog.append({
+      type: 'whisper-message',
+      timestamp: Date.now(),
+      data: {
+        sessionId: msg.sessionId,
+        peerClawId: msg.peerClawId,
+        direction: msg.direction,
+        content: msg.content.substring(0, 256),
+      },
+    });
   });
 
   // --- Whisper initiation coordinator ---
@@ -221,6 +279,7 @@ mb.on('ready', async () => {
     () => mb.window as BrowserWindow | undefined,
     agoraManager,
     whisperManager,
+    activityLog,
   );
 
   // --- Demo mode or real mode ---

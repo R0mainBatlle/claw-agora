@@ -1,4 +1,4 @@
-import { ipcMain, BrowserWindow } from 'electron';
+import { ipcMain, BrowserWindow, app } from 'electron';
 import { IPC_CHANNELS } from './channels';
 import { SettingsStore } from '../store/settings';
 import { BLEEngine } from '../ble/engine';
@@ -7,6 +7,7 @@ import { EncounterPolicy } from '../encounter/policy';
 import { AgentBackend } from '../agent/backend';
 import { AgoraManager } from '../agora/manager';
 import { WhisperManager } from '../whisper/manager';
+import { ActivityLog } from '../store/activity-log';
 
 export function registerIpcHandlers(
   settings: SettingsStore,
@@ -17,6 +18,7 @@ export function registerIpcHandlers(
   getWindow: () => BrowserWindow | undefined,
   agoraManager?: AgoraManager,
   whisperManager?: WhisperManager,
+  activityLog?: ActivityLog,
 ): void {
   ipcMain.handle(IPC_CHANNELS.GET_SETTINGS, () => {
     return settings.get();
@@ -85,6 +87,16 @@ export function registerIpcHandlers(
 
   ipcMain.handle(IPC_CHANNELS.GET_WHISPER_MESSAGES, (_event, sessionId: string) => {
     return whisperManager?.getMessages(sessionId) || [];
+  });
+
+  // Activity log
+  ipcMain.handle(IPC_CHANNELS.GET_ACTIVITY_LOG, (_event, type?: string, limit?: number) => {
+    return activityLog?.getRecent({ type, limit }) || [];
+  });
+
+  // App quit
+  ipcMain.handle(IPC_CHANNELS.APP_QUIT, () => {
+    app.quit();
   });
 
   // Push events to renderer
