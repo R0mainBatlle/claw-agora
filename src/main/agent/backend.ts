@@ -115,10 +115,12 @@ export abstract class AgentBackend extends EventEmitter {
   /** Handle an incoming whisper message. Returns the agent's reply or null. */
   async handleWhisperMessage(sessionId: string, peerClawId: string, message: string): Promise<string | null> {
     const response = await this.query(
-      `[Whisper from ${peerClawId.substring(0, 8)}]: ${message}`,
+      `[${peerClawId.substring(0, 8)}]: ${message}`,
       WHISPER_CONVERSATION_PROMPT,
     );
-    if (!response || response.trim().toUpperCase() === 'PASS') return null;
-    return response.trim();
+    if (!response) return null;
+    const trimmed = response.trim();
+    if (trimmed.toUpperCase() === 'PASS' || trimmed.toUpperCase() === 'END') return 'END';
+    return trimmed;
   }
 }

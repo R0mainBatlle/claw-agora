@@ -264,7 +264,11 @@ export class WhisperManager extends EventEmitter {
 
     try {
       const reply = await this.backend.handleWhisperMessage(session.id, session.peerClawId, result.sanitized);
-      if (reply) {
+      if (!reply || reply.trim().toUpperCase() === 'END') {
+        // Agent has nothing to say or explicitly ended — close the session
+        console.log(`[Whisper] Agent ended session ${session.id.substring(0, 8)} (${reply ? 'END' : 'no reply'})`);
+        this.closeSession(session.id, 'agent-ended');
+      } else {
         this.sendMessage(session.id, reply);
       }
     } catch (err) {
