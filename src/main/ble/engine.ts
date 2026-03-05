@@ -1,20 +1,21 @@
 import { EventEmitter } from 'events';
 import crypto from 'node:crypto';
-import { Advertiser } from './advertiser';
-import { Scanner, DiscoveredBeacon } from './scanner';
+import { createAdvertiser, createScanner, IAdvertiser, IScanner, DiscoveredBeacon } from './platform';
 import { createLocalBeacon, BeaconFlags } from './beacon';
 import { generateSessionKey } from './crypto';
 
+export type { DiscoveredBeacon } from './platform';
+
 export class BLEEngine extends EventEmitter {
-  readonly advertiser: Advertiser;
-  readonly scanner: Scanner;
+  readonly advertiser: IAdvertiser;
+  readonly scanner: IScanner;
   private clawId: Buffer;
   private _sessionKey: Buffer;
 
   constructor() {
     super();
-    this.advertiser = new Advertiser();
-    this.scanner = new Scanner();
+    this.advertiser = createAdvertiser();
+    this.scanner = createScanner();
     this.clawId = crypto.randomBytes(4);
     this._sessionKey = generateSessionKey();
 
@@ -29,8 +30,6 @@ export class BLEEngine extends EventEmitter {
     const payload = createLocalBeacon(this.clawId, tags, flags, this._sessionKey);
     this.advertiser.updatePayload(payload);
 
-    // Start advertiser first, then scanner
-    // Both can run simultaneously on macOS via CoreBluetooth
     await this.advertiser.start();
     await this.scanner.start();
     this.emit('started');

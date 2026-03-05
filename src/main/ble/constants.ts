@@ -46,7 +46,7 @@ export const GATT_READ_TIMEOUT_MS = 3_000;
 // Don't re-read same peripheral within this window (ms)
 export const READ_COOLDOWN_MS = 30_000;
 
-// Strip dashes from UUID for bleno/noble (they expect 32 hex chars, no dashes)
+// Strip dashes from UUID for bleno/noble (which use 32-char hex strings)
 export function stripUUID(uuid: string): string {
   return uuid.replace(/-/g, '');
 }

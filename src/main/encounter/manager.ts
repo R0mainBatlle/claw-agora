@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import { DiscoveredBeacon } from '../ble/scanner';
+import { DiscoveredBeacon } from '../ble/platform';
 import { NearbyPeer, EncounterEvent } from './types';
 import { PEER_TIMEOUT_MS } from '../ble/constants';
 

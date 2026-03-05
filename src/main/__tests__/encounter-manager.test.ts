@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { EncounterManager } from '../encounter/manager';
-import type { DiscoveredBeacon } from '../ble/scanner';
+import type { DiscoveredBeacon } from '../ble/platform';
 import type { EncounterEvent } from '../encounter/types';
 
 function makeBeacon(clawIdHex: string, overrides?: Partial<{

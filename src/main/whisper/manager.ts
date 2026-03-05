@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
 import { WhisperSession } from './session';
-import { WhisperService } from './service';
+import type { WhisperService } from './service';
 import { WhisperClient } from './client';
 import { WhisperConfig, DEFAULT_WHISPER_CONFIG, CloseReason, RejectReason } from './types';
 import { inspectContent } from '../security/quarantine';
@@ -47,7 +47,7 @@ export class WhisperManager extends EventEmitter {
   private peerClawIdToSession = new Map<string, string>();
   private backend: AgentBackend;
   private localClawId: Buffer;
-  private whisperService: WhisperService;
+  private whisperService: WhisperService | null;
   private idleCheckTimer: ReturnType<typeof setInterval> | null = null;
   private _messages = new Map<string, WhisperMessageItem[]>(); // sessionId → messages
   private _demoSessions: WhisperSessionSummary[] = [];
@@ -57,7 +57,7 @@ export class WhisperManager extends EventEmitter {
   constructor(
     backend: AgentBackend,
     localClawId: Buffer,
-    whisperService: WhisperService,
+    whisperService: WhisperService | null,
     config?: Partial<WhisperConfig>,
   ) {
     super();
@@ -66,12 +66,14 @@ export class WhisperManager extends EventEmitter {
     this.localClawId = localClawId;
     this.whisperService = whisperService;
 
-    this.whisperService.on('control-message', (msg: ControlMessage) => {
-      this.handleIncomingControl(msg);
-    });
-    this.whisperService.on('data-frame', (frame: DataFrame) => {
-      this.handleIncomingDataFrame(frame);
-    });
+    if (this.whisperService) {
+      this.whisperService.on('control-message', (msg: ControlMessage) => {
+        this.handleIncomingControl(msg);
+      });
+      this.whisperService.on('data-frame', (frame: DataFrame) => {
+        this.handleIncomingDataFrame(frame);
+      });
+    }
   }
 
   start(): void {
@@ -206,7 +208,7 @@ export class WhisperManager extends EventEmitter {
       session.handleControlMessage(msg);
       session.rejectHandshake(RejectReason.BUSY);
       session.on('send-control', (data: Buffer) => {
-        this.whisperService.sendControl(data);
+        this.whisperService?.sendControl(data);
       });
       return;
     }
@@ -216,10 +218,10 @@ export class WhisperManager extends EventEmitter {
     this.registerSession(active);
 
     session.on('send-control', (data: Buffer) => {
-      this.whisperService.sendControl(data);
+      this.whisperService?.sendControl(data);
     });
     session.on('send-data', (data: Buffer) => {
-      this.whisperService.sendData(data);
+      this.whisperService?.sendData(data);
     });
 
     this.wireSessionEvents(session);

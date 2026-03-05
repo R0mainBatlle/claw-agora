@@ -2,7 +2,6 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { app, BrowserWindow, nativeImage } from 'electron';
 import { menubar } from 'menubar';
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let liquidGlass: any = null;
 try {
   // Optional dependency — native addon may not build on all platforms
@@ -21,19 +20,32 @@ import { formatEncounterMessage } from './agent/message-formatter';
 import { SettingsStore } from './store/settings';
 import { ActivityLog } from './store/activity-log';
 import { registerIpcHandlers } from './ipc/handlers';
-import { DiscoveredBeacon } from './ble/scanner';
+import { DiscoveredBeacon } from './ble/engine';
 import { EncounterEvent } from './encounter/types';
-import { AgoraService } from './agora/service';
 import { AgoraManager } from './agora/manager';
 import { AgoraRingBuffer } from './agora/ring-buffer';
 import { readRemoteAgora } from './agora/reader';
-import { WhisperService } from './whisper/service';
 import { WhisperManager } from './whisper/manager';
+
+// AgoraService and WhisperService depend on @stoprocent/bleno (macOS-only)
+let AgoraService: any = null;
+let WhisperService: any = null;
+try {
+  AgoraService = require('./agora/service').AgoraService;
+  WhisperService = require('./whisper/service').WhisperService;
+} catch {
+  // bleno not available (Linux) — GATT services for agora/whisper disabled
+}
 import type { PeerContext } from './agent/backend';
 import { startDemo } from './demo';
 
 // Hide dock icon (menu bar app)
 app.dock?.hide();
+
+// Prevent quitting when window is hidden (tray app)
+app.on('window-all-closed', () => {
+  // Do nothing — keep running as tray app
+});
 
 const settings = new SettingsStore();
 const activityLog = new ActivityLog();
@@ -162,11 +174,27 @@ mb.on('ready', async () => {
 
   // --- Agora setup ---
   const agoraRingBuffer = new AgoraRingBuffer();
-  const agoraService = new AgoraService(agoraRingBuffer, bleEngine.localClawId, bleEngine.sessionKey);
   const agoraManager = new AgoraManager(backend, bleEngine.localClawId, bleEngine.sessionKey);
 
-  // Register agora GATT service
-  bleEngine.advertiser.addService(agoraService.service);
+  if (AgoraService) {
+    const agoraService = new AgoraService(agoraRingBuffer, bleEngine.localClawId, bleEngine.sessionKey);
+    bleEngine.advertiser.addService(agoraService.service);
+
+    // Handle remote posts submitted to our board
+    agoraService.on('remote-post', (post: any) => {
+      const clawIdHex = post.clawId instanceof Buffer ? post.clawId.toString('hex') : String(post.clawId);
+      agoraManager.handleRemotePosts(clawIdHex, [post]);
+    });
+
+    // Wire agora reading into scan cycle — read remote boards while still connected
+    bleEngine.scanner.addConnectionHook(async (peripheral) => {
+      const result = await readRemoteAgora(peripheral);
+      if (!result || result.posts.length === 0) return;
+      const peerClawIdHex = result.meta.ownerClawId.toString('hex');
+      await agoraManager.handleRemotePosts(peerClawIdHex, result.posts);
+      console.log(`[Aura] Read ${result.posts.length} agora post(s) from ${peerClawIdHex.substring(0, 8)}`);
+    });
+  }
 
   // Log agora posts to activity log
   agoraManager.on('post', (item) => {
@@ -181,27 +209,14 @@ mb.on('ready', async () => {
     });
   });
 
-  // Handle remote posts submitted to our board
-  agoraService.on('remote-post', (post) => {
-    const clawIdHex = post.clawId instanceof Buffer ? post.clawId.toString('hex') : String(post.clawId);
-    agoraManager.handleRemotePosts(clawIdHex, [post]);
-  });
-
-  // Wire agora reading into scan cycle — read remote boards while still connected
-  bleEngine.scanner.addConnectionHook(async (peripheral) => {
-    const result = await readRemoteAgora(peripheral);
-    if (!result || result.posts.length === 0) return;
-    const peerClawIdHex = result.meta.ownerClawId.toString('hex');
-    await agoraManager.handleRemotePosts(peerClawIdHex, result.posts);
-    console.log(`[Aura] Read ${result.posts.length} agora post(s) from ${peerClawIdHex.substring(0, 8)}`);
-  });
-
   // --- Whisper setup ---
-  const whisperService = new WhisperService();
+  const whisperService = WhisperService ? new WhisperService() : null;
   const whisperManager = new WhisperManager(backend, bleEngine.localClawId, whisperService);
 
-  // Register whisper GATT service
-  bleEngine.advertiser.addService(whisperService.service);
+  // Register whisper GATT service (macOS only)
+  if (whisperService) {
+    bleEngine.advertiser.addService(whisperService.service);
+  }
 
   // Give whisper manager access to agora posts for enriching incoming request context
   whisperManager.setContextProvider((clawId) =>
