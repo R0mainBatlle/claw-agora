@@ -2,7 +2,15 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { app, BrowserWindow, nativeImage } from 'electron';
 import { menubar } from 'menubar';
-import liquidGlass from 'electron-liquid-glass';
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let liquidGlass: any = null;
+try {
+  // Optional dependency — native addon may not build on all platforms
+  const mod = require('electron-liquid-glass');
+  liquidGlass = mod.default ?? mod;
+} catch {
+  console.warn('[Aura] electron-liquid-glass not available, glass effects disabled');
+}
 import { BLEEngine } from './ble/engine';
 import { EncounterManager } from './encounter/manager';
 import { EncounterPolicy } from './encounter/policy';
@@ -96,15 +104,23 @@ mb.on('ready', async () => {
     console.error('[ActivityLog] Prune failed:', (err as Error).message),
   );
 
-  // Apply Liquid Glass to the window
+  // Apply Liquid Glass to the window (with fallback)
   const win = mb.window;
-  if (win) {
-    const glassId = liquidGlass.addView(win.getNativeWindowHandle(), {
-      cornerRadius: 12,
-      opaque: true,
-      tintColor: '#00000030',
-    });
-    console.log(`[Aura] Liquid Glass: id=${glassId}, supported=${liquidGlass.isGlassSupported()}`);
+  if (win && liquidGlass && liquidGlass.isGlassSupported()) {
+    try {
+      const glassId = liquidGlass.addView(win.getNativeWindowHandle(), {
+        cornerRadius: 12,
+        opaque: true,
+        tintColor: '#00000030',
+      });
+      console.log(`[Aura] Liquid Glass applied (id=${glassId})`);
+    } catch (err) {
+      console.warn('[Aura] Liquid Glass addView failed, continuing without glass:', (err as Error).message);
+      win.setBackgroundColor('#1a1a1a');
+    }
+  } else if (win) {
+    console.log('[Aura] Liquid Glass not available, using solid background');
+    win.setBackgroundColor('#1a1a1a');
   }
 
   // Wire BLE discoveries to encounter manager
