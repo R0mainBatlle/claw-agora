@@ -16,13 +16,16 @@
     "postinstall": "electron-builder install-app-deps"
   },
   "dependencies": {
-    "@stoprocent/bleno": "^0.12.0",
-    "@stoprocent/noble": "^2.3.0",
     "crc": "^4.3.0",
-    "electron-liquid-glass": "^1.1.1",
+    "dbus-next": "^0.10.2",
     "menubar": "^9.5.0",
     "uuid": "^9.0.0",
     "ws": "^8.16.0"
+  },
+  "optionalDependencies": {
+    "@stoprocent/bleno": "^0.12.0",
+    "@stoprocent/noble": "^2.3.0",
+    "electron-liquid-glass": "^1.1.1"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
