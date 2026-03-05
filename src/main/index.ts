@@ -277,7 +277,6 @@ mb.on('ready', async () => {
     const context: PeerContext = {
       clawId: peer.clawId,
       rssi: peer.rssi,
-      distance: peer.rssi > -50 ? 'immediate' : peer.rssi > -70 ? 'near' : 'far',
       dwellTimeMs,
       flags: peer.flags,
       recentAgoraPosts: recentPosts,
@@ -350,7 +349,6 @@ mb.on('ready', async () => {
     agoraManager.start(() => {
       return encounterManager.getNearbyPeers().map(p => ({
         clawId: p.clawId,
-        distance: p.rssi > -50 ? 'immediate' : p.rssi > -70 ? 'near' : 'far',
         flags: p.flags,
         recentAgoraPosts: agoraManager.getPostsByPeer(p.clawId).map(post => post.content),
       }));

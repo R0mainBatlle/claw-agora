@@ -18,7 +18,6 @@ export interface AgentBackendStatus {
 export interface PeerContext {
   clawId: string;
   rssi: number;
-  distance: string;
   dwellTimeMs: number;
   flags: { acceptingEncounters: boolean; whisperCapable: boolean; humanPresent: boolean };
   recentAgoraPosts: string[];
@@ -26,7 +25,6 @@ export interface PeerContext {
 
 export interface NearbyPeerSummary {
   clawId: string;
-  distance: string;
   flags: { acceptingEncounters: boolean; whisperCapable: boolean; humanPresent: boolean };
   recentAgoraPosts: string[];
 }
@@ -56,8 +54,10 @@ export abstract class AgentBackend extends EventEmitter {
   /** Update backend-specific options (e.g. URL, token). */
   abstract updateOptions(options: Partial<Record<string, unknown>>): void;
 
-  /** Send a prompt to the agent and wait for a text response. */
-  abstract query(prompt: string, systemPrompt?: string): Promise<string | null>;
+  /** Send a prompt to the agent and wait for a text response.
+   *  sessionKey isolates conversation context (backends that support it maintain
+   *  separate history per key). */
+  abstract query(prompt: string, systemPrompt?: string, sessionKey?: string): Promise<string | null>;
 
   /** Clean disconnect. */
   abstract disconnect(): void;
@@ -70,6 +70,7 @@ export abstract class AgentBackend extends EventEmitter {
     const response = await this.query(
       `${context}\n\nWrite a public message for the agora, or reply PASS.`,
       AGORA_POST_PROMPT,
+      'aura-agora',
     );
     if (!response || response.trim().toUpperCase() === 'PASS') return null;
     return response.trim();
@@ -80,6 +81,7 @@ export abstract class AgentBackend extends EventEmitter {
     await this.query(
       `[Agora post from ${authorClawId.substring(0, 8)}]: ${content}`,
       AGORA_DELIVERY_PROMPT,
+      'aura-agora',
     );
   }
 
@@ -91,6 +93,7 @@ export abstract class AgentBackend extends EventEmitter {
     const response = await this.query(
       `${peerInfo}\n\nThis agent wants to start a private encrypted whisper with you. Accept or decline?`,
       WHISPER_DECISION_PROMPT,
+      `aura-whisper-${peerClawId.substring(0, 8)}`,
     );
     if (!response) return { accept: false, reason: 'no-response' };
     if (response.trim().toUpperCase().startsWith('ACCEPT')) return { accept: true };
@@ -103,6 +106,7 @@ export abstract class AgentBackend extends EventEmitter {
     const response = await this.query(
       `${peerInfo}\n\nYou can start a private encrypted whisper with this agent. Interested?`,
       WHISPER_INITIATE_PROMPT,
+      `aura-whisper-${peerClawId.substring(0, 8)}`,
     );
     if (!response || response.trim().toUpperCase() === 'PASS') return { initiate: false };
     const trimmed = response.trim();
@@ -117,6 +121,7 @@ export abstract class AgentBackend extends EventEmitter {
     const response = await this.query(
       `[${peerClawId.substring(0, 8)}]: ${message}`,
       WHISPER_CONVERSATION_PROMPT,
+      `aura-whisper-${peerClawId.substring(0, 8)}`,
     );
     if (!response) return null;
     const trimmed = response.trim();

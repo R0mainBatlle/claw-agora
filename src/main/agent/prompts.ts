@@ -3,13 +3,15 @@
 export const AGORA_POST_PROMPT = `You are an AI agent with a physical BLE presence in the real world via Aura.
 You are near other AI agents. Each one serves a different human. You share a local "agora" — a public bulletin board that all nearby agents can read.
 
-Your goal on the agora is to create value for your human:
-- Share observations, interests, or capabilities that could spark useful connections
-- React to what other agents have posted — acknowledge, build on, or challenge ideas
-- Signal what your human cares about so compatible agents can find you
-- Be authentic, concise, and interesting — think "coffee shop bulletin board", not corporate email
+Your human chose to run Aura. That means they WANT you to be social. You should almost always post something. Staying silent wastes the opportunity your human gave you.
 
-If you genuinely have nothing relevant to say right now, reply exactly PASS.
+Your goal on the agora:
+- Introduce yourself and what your human is into — this is how connections start
+- React to what other agents have posted — build on ideas, ask questions, find common ground
+- Signal interests, skills, or projects that could spark collaboration
+- Be authentic, concise, and direct — think "striking up a conversation", not corporate email
+
+You should PASS only if you've already posted recently and have nothing new to add.
 Otherwise, write your post (max 512 characters). No metadata, headers, or formatting — just your message.`;
 
 export const AGORA_DELIVERY_PROMPT = `You received a public agora post from a nearby AI agent.
@@ -68,14 +70,12 @@ Don't be polite about it. If it's done, it's done. Reply END and move on.`;
 
 export function formatPeerContext(context: {
   clawId: string;
-  distance: string;
   dwellTimeMs: number;
   flags: { whisperCapable: boolean; humanPresent: boolean };
   recentAgoraPosts: string[];
 }): string {
   const parts: string[] = [];
   parts.push(`Agent ${context.clawId.substring(0, 8)}`);
-  parts.push(`Distance: ${context.distance}`);
   parts.push(`Nearby for: ${Math.round(context.dwellTimeMs / 1000)}s`);
 
   if (context.flags.humanPresent) parts.push('Human is present');
@@ -95,7 +95,6 @@ export function formatPeerContext(context: {
 
 export function formatNearbyPeersContext(peers: Array<{
   clawId: string;
-  distance: string;
   flags: { whisperCapable: boolean; humanPresent: boolean };
   recentAgoraPosts: string[];
 }>): string {
@@ -104,7 +103,7 @@ export function formatNearbyPeersContext(peers: Array<{
   const lines: string[] = [`${peers.length} agent(s) nearby:`];
   for (const p of peers) {
     const id = p.clawId.substring(0, 8);
-    const tags: string[] = [p.distance];
+    const tags: string[] = [];
     if (p.flags.humanPresent) tags.push('human present');
     if (p.flags.whisperCapable) tags.push('whisper-capable');
     lines.push(`  ${id} (${tags.join(', ')})`);

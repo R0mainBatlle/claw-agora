@@ -32,6 +32,7 @@ export class EncounterManager extends EventEmitter {
         timestamp: beacon.timestamp,
       } as EncounterEvent);
     } else {
+      existing.peripheralId = beacon.peripheralId; // update in case macOS rotated the BLE ID
       existing.lastSeen = beacon.timestamp;
       existing.rssi = beacon.rssi;
       existing.flags = beacon.payload.flags;
@@ -45,12 +46,22 @@ export class EncounterManager extends EventEmitter {
   }
 
   handleRssiUpdate(update: { peripheralId: string; rssi: number }): void {
+    const now = Date.now();
     for (const peer of this.peers.values()) {
       if (peer.peripheralId === update.peripheralId) {
         peer.rssi = update.rssi;
-        peer.lastSeen = Date.now();
-        break;
+        peer.lastSeen = now;
+        return;
       }
+    }
+    // peripheralId may have changed (macOS randomizes BLE IDs) —
+    // update the most recently seen peer whose peripheralId is stale
+    // This is a heuristic: if only one peer is nearby, it's almost certainly them
+    if (this.peers.size === 1) {
+      const peer = this.peers.values().next().value!;
+      peer.peripheralId = update.peripheralId;
+      peer.rssi = update.rssi;
+      peer.lastSeen = now;
     }
   }
 

@@ -231,7 +231,6 @@ export class WhisperManager extends EventEmitter {
     const context: PeerContext = {
       clawId: peerClawIdHex,
       rssi: 0,
-      distance: 'unknown',
       dwellTimeMs: 0,
       flags: { acceptingEncounters: true, whisperCapable: true, humanPresent: false },
       recentAgoraPosts: recentPosts,

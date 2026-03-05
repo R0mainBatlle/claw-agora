@@ -58,18 +58,19 @@ export class OpenClawBackend extends AgentBackend {
       message,
       agentId: 'main',
       idempotencyKey: `aura-encounter-${event.peer.clawId}-${event.timestamp}`,
+      sessionKey: 'aura-encounter',
     }).catch(() => { /* fire-and-forget */ });
     console.log(`[OpenClaw] Sent encounter to agent: clawId=${event.peer.clawId}`);
   }
 
-  async query(prompt: string, systemPrompt?: string): Promise<string | null> {
+  async query(prompt: string, systemPrompt?: string, sessionKey?: string): Promise<string | null> {
     if (!this.bridge?.connected) return null;
 
     const params: Record<string, unknown> = {
       message: prompt,
       agentId: 'main',
       idempotencyKey: `aura-query-${Date.now()}`,
-      sessionKey: 'aura-internal',
+      sessionKey: sessionKey || 'aura-internal',
     };
     if (systemPrompt) {
       params.extraSystemPrompt = systemPrompt;
