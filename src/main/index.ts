@@ -14,6 +14,13 @@ import { SettingsStore } from './store/settings';
 import { registerIpcHandlers } from './ipc/handlers';
 import { DiscoveredBeacon } from './ble/scanner';
 import { EncounterEvent } from './encounter/types';
+import { AgoraService } from './agora/service';
+import { AgoraManager } from './agora/manager';
+import { AgoraRingBuffer } from './agora/ring-buffer';
+import { readRemoteAgora } from './agora/reader';
+import { WhisperService } from './whisper/service';
+import { WhisperManager } from './whisper/manager';
+import type { PeerContext } from './agent/backend';
 
 // Hide dock icon (menu bar app)
 app.dock?.hide();
@@ -92,16 +99,6 @@ mb.on('ready', async () => {
     console.log(`[Aura] Liquid Glass: id=${glassId}, supported=${liquidGlass.isGlassSupported()}`);
   }
 
-  // Register IPC handlers
-  registerIpcHandlers(
-    settings,
-    bleEngine,
-    encounterManager,
-    backend,
-    encounterPolicy,
-    () => mb.window as BrowserWindow | undefined,
-  );
-
   // Wire BLE discoveries to encounter manager
   bleEngine.on('beacon-discovered', (beacon: DiscoveredBeacon) => {
     encounterManager.handleBeaconDiscovered(beacon);
@@ -123,11 +120,113 @@ mb.on('ready', async () => {
   // Start encounter manager
   encounterManager.start();
 
+  // --- Agora setup ---
+  const agoraRingBuffer = new AgoraRingBuffer();
+  const agoraService = new AgoraService(agoraRingBuffer, bleEngine.localClawId, bleEngine.sessionKey);
+  const agoraManager = new AgoraManager(backend, bleEngine.localClawId, bleEngine.sessionKey);
+
+  // Register agora GATT service
+  bleEngine.advertiser.addService(agoraService.service);
+
+  // Handle remote posts submitted to our board
+  agoraService.on('remote-post', (post) => {
+    const clawIdHex = post.clawId instanceof Buffer ? post.clawId.toString('hex') : String(post.clawId);
+    agoraManager.handleRemotePosts(clawIdHex, [post]);
+  });
+
+  // Wire agora reading into scan cycle — read remote boards while still connected
+  bleEngine.scanner.addConnectionHook(async (peripheral) => {
+    const result = await readRemoteAgora(peripheral);
+    if (!result || result.posts.length === 0) return;
+    const peerClawIdHex = result.meta.ownerClawId.toString('hex');
+    await agoraManager.handleRemotePosts(peerClawIdHex, result.posts);
+    console.log(`[Aura] Read ${result.posts.length} agora post(s) from ${peerClawIdHex.substring(0, 8)}`);
+  });
+
+  // --- Whisper setup ---
+  const whisperService = new WhisperService();
+  const whisperManager = new WhisperManager(backend, bleEngine.localClawId, whisperService);
+
+  // Register whisper GATT service
+  bleEngine.advertiser.addService(whisperService.service);
+
+  // Give whisper manager access to agora posts for enriching incoming request context
+  whisperManager.setContextProvider((clawId) =>
+    agoraManager.getPostsByPeer(clawId).map(p => p.content),
+  );
+
+  whisperManager.on('session-established', (sessionId: string, peerClawId: string) => {
+    console.log(`[Aura] Whisper session established: ${sessionId.substring(0, 8)} with ${peerClawId.substring(0, 8)}`);
+  });
+  whisperManager.on('session-closed', (sessionId: string, peerClawId: string, reason: string) => {
+    console.log(`[Aura] Whisper session closed: ${sessionId.substring(0, 8)} — ${reason}`);
+  });
+
+  // --- Whisper initiation coordinator ---
+  // Track peers we've already attempted to whisper with (avoid spam)
+  const whisperAttempted = new Set<string>();
+  const whisperSettings = settings.get().whisper;
+
+  encounterManager.on('encounter', async (event: EncounterEvent) => {
+    if (event.type !== 'encounter-update') return;
+    if (!whisperSettings.enabled || !whisperSettings.autoInitiate) return;
+
+    const peer = event.peer;
+    if (!peer.flags.whisperCapable) return;
+    if (whisperAttempted.has(peer.clawId)) return;
+
+    const dwellTimeMs = event.timestamp - peer.firstSeen;
+    if (dwellTimeMs < whisperSettings.initiateAfterMs) return;
+
+    // Mark as attempted before async call to prevent duplicate initiations
+    whisperAttempted.add(peer.clawId);
+
+    // Build rich context with agora posts
+    const recentPosts = agoraManager.getPostsByPeer(peer.clawId)
+      .map(p => p.content);
+    const context: PeerContext = {
+      clawId: peer.clawId,
+      rssi: peer.rssi,
+      distance: peer.rssi > -50 ? 'immediate' : peer.rssi > -70 ? 'near' : 'far',
+      dwellTimeMs,
+      flags: peer.flags,
+      recentAgoraPosts: recentPosts,
+    };
+
+    try {
+      const initiated = await whisperManager.initiateWhisper(peer, peer.clawId, context);
+      if (initiated) {
+        console.log(`[Aura] Whisper initiated with ${peer.clawId.substring(0, 8)} after ${Math.round(dwellTimeMs / 1000)}s dwell`);
+      }
+    } catch (err) {
+      console.error(`[Aura] Whisper initiation failed for ${peer.clawId.substring(0, 8)}:`, (err as Error).message);
+    }
+  });
+
+  // Clean up whisper attempts when peers leave
+  encounterManager.on('encounter', (event: EncounterEvent) => {
+    if (event.type === 'encounter-end') {
+      whisperAttempted.delete(event.peer.clawId);
+    }
+  });
+
+  // Register IPC handlers (after agora/whisper setup so they get the managers)
+  registerIpcHandlers(
+    settings,
+    bleEngine,
+    encounterManager,
+    backend,
+    encounterPolicy,
+    () => mb.window as BrowserWindow | undefined,
+    agoraManager,
+    whisperManager,
+  );
+
   // Start BLE
   try {
     await bleEngine.start(currentSettings.tags, {
       acceptingEncounters: true,
-      whisperCapable: false,
+      whisperCapable: true,
       humanPresent: true,
     });
     console.log(`[Aura] BLE started. Claw ID: ${bleEngine.localClawId.toString('hex')}`);
@@ -142,11 +241,33 @@ mb.on('ready', async () => {
   backend.on('error', (err: Error) => {
     console.error(`[Aura] ${backend.displayName} error:`, err.message);
   });
+
+  // Start Agora (polls agent for posts, needs nearby peers with their agora context)
+  agoraManager.start(() => {
+    return encounterManager.getNearbyPeers().map(p => ({
+      clawId: p.clawId,
+      distance: p.rssi > -50 ? 'immediate' : p.rssi > -70 ? 'near' : 'far',
+      flags: p.flags,
+      recentAgoraPosts: agoraManager.getPostsByPeer(p.clawId).map(post => post.content),
+    }));
+  });
+
+  // Start Whisper session management
+  whisperManager.start();
+
+  // Capture for shutdown
+  shutdownAgora = () => agoraManager.stop();
+  shutdownWhisper = () => whisperManager.stop();
 });
 
 // Clean shutdown
+let shutdownAgora: (() => void) | null = null;
+let shutdownWhisper: (() => void) | null = null;
+
 app.on('before-quit', async () => {
   console.log('[Aura] Shutting down...');
+  shutdownAgora?.();
+  shutdownWhisper?.();
   encounterManager.stop();
   backend.disconnect();
   await bleEngine.stop();

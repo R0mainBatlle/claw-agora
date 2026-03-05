@@ -16,10 +16,18 @@ export interface DiscoveredBeacon {
   timestamp: number;
 }
 
+export type ConnectionHook = (peripheral: Peripheral) => Promise<void>;
+
 export class Scanner extends EventEmitter {
   private isScanning = false;
   private readCache = new Map<string, number>();
   private activeReads = new Set<string>();
+  private connectionHooks: ConnectionHook[] = [];
+
+  /** Register a hook that runs while still connected to a peer (after beacon read). */
+  addConnectionHook(hook: ConnectionHook): void {
+    this.connectionHooks.push(hook);
+  }
 
   async start(): Promise<void> {
     await noble.waitForPoweredOnAsync();
@@ -50,13 +58,13 @@ export class Scanner extends EventEmitter {
     this.activeReads.add(id);
 
     try {
-      const payload = await this.readBeaconPayload(peripheral);
-      if (payload) {
+      const result = await this.connectAndRead(peripheral);
+      if (result) {
         this.readCache.set(id, now);
         this.emit('beacon-discovered', {
           peripheralId: id,
           rssi: peripheral.rssi,
-          payload,
+          payload: result,
           timestamp: now,
         } as DiscoveredBeacon);
       }
@@ -67,7 +75,7 @@ export class Scanner extends EventEmitter {
     }
   }
 
-  private async readBeaconPayload(peripheral: Peripheral): Promise<BeaconPayload | null> {
+  private async connectAndRead(peripheral: Peripheral): Promise<BeaconPayload | null> {
     const connectPromise = peripheral.connectAsync();
     const timeoutPromise = new Promise<never>((_, reject) =>
       setTimeout(() => reject(new Error('Connect timeout')), GATT_READ_TIMEOUT_MS),
@@ -87,7 +95,18 @@ export class Scanner extends EventEmitter {
       if (!characteristics || characteristics.length === 0) return null;
 
       const data = await characteristics[0].readAsync();
-      return decodeBeacon(data);
+      const payload = decodeBeacon(data);
+
+      // Run connection hooks while still connected (e.g. read agora board)
+      for (const hook of this.connectionHooks) {
+        try {
+          await hook(peripheral);
+        } catch (err) {
+          console.warn('[Scanner] Connection hook failed:', (err as Error).message);
+        }
+      }
+
+      return payload;
     } finally {
       try {
         await peripheral.disconnectAsync();

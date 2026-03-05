@@ -9,14 +9,14 @@ export class BLEEngine extends EventEmitter {
   readonly advertiser: Advertiser;
   readonly scanner: Scanner;
   private clawId: Buffer;
-  private sessionKey: Buffer;
+  private _sessionKey: Buffer;
 
   constructor() {
     super();
     this.advertiser = new Advertiser();
     this.scanner = new Scanner();
     this.clawId = crypto.randomBytes(4);
-    this.sessionKey = generateSessionKey();
+    this._sessionKey = generateSessionKey();
 
     this.scanner.on('beacon-discovered', (beacon: DiscoveredBeacon) => {
       this.emit('beacon-discovered', beacon);
@@ -26,7 +26,7 @@ export class BLEEngine extends EventEmitter {
   }
 
   async start(tags: string[], flags: BeaconFlags): Promise<void> {
-    const payload = createLocalBeacon(this.clawId, tags, flags, this.sessionKey);
+    const payload = createLocalBeacon(this.clawId, tags, flags, this._sessionKey);
     this.advertiser.updatePayload(payload);
 
     // Start advertiser first, then scanner
@@ -37,7 +37,7 @@ export class BLEEngine extends EventEmitter {
   }
 
   updateBeacon(tags: string[], flags: BeaconFlags): void {
-    const payload = createLocalBeacon(this.clawId, tags, flags, this.sessionKey);
+    const payload = createLocalBeacon(this.clawId, tags, flags, this._sessionKey);
     this.advertiser.updatePayload(payload);
   }
 
@@ -51,5 +51,9 @@ export class BLEEngine extends EventEmitter {
 
   get localClawId(): Buffer {
     return this.clawId;
+  }
+
+  get sessionKey(): Buffer {
+    return this._sessionKey;
   }
 }

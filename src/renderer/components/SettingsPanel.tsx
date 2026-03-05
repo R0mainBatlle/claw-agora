@@ -4,7 +4,9 @@ import SettingsSidebar, { SettingsTab } from './SettingsSidebar';
 import IdentitySettings from './IdentitySettings';
 import BackendSettings from './BackendSettings';
 import PolicySettings from './PolicySettings';
-import type { EncounterPolicyData } from '../types';
+import AgoraSettings from './AgoraSettings';
+import WhisperSettings from './WhisperSettings';
+import type { EncounterPolicyData, AgoraSettingsData, WhisperSettingsData } from '../types';
 
 interface SettingsPanelProps {
   onBack: () => void;
@@ -20,6 +22,8 @@ export default function SettingsPanel({ onBack }: SettingsPanelProps) {
   const [backendType, setBackendType] = useState('openclaw');
   const [backendOptions, setBackendOptions] = useState<Record<string, unknown>>({});
   const [localPolicy, setLocalPolicy] = useState<EncounterPolicyData | null>(null);
+  const [agoraConfig, setAgoraConfig] = useState<AgoraSettingsData | null>(null);
+  const [whisperConfig, setWhisperConfig] = useState<WhisperSettingsData | null>(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -28,6 +32,8 @@ export default function SettingsPanel({ onBack }: SettingsPanelProps) {
       setTags(settings.tags);
       setBackendType(settings.backendType);
       setBackendOptions(settings.backendOptions);
+      setAgoraConfig(settings.agora);
+      setWhisperConfig(settings.whisper);
     }
   }, [settings]);
 
@@ -39,12 +45,15 @@ export default function SettingsPanel({ onBack }: SettingsPanelProps) {
 
   const handleSave = async () => {
     setSaving(true);
-    await updateSettings({
+    const update: Record<string, unknown> = {
       humanDescription,
       tags,
       backendType,
       backendOptions,
-    });
+    };
+    if (agoraConfig) update.agora = agoraConfig;
+    if (whisperConfig) update.whisper = whisperConfig;
+    await updateSettings(update);
     if (localPolicy) {
       await updatePolicy(localPolicy);
     }
@@ -88,6 +97,20 @@ export default function SettingsPanel({ onBack }: SettingsPanelProps) {
             <PolicySettings
               policy={localPolicy}
               onChange={setLocalPolicy}
+            />
+          )}
+
+          {activeTab === 'agora' && agoraConfig && (
+            <AgoraSettings
+              config={agoraConfig}
+              onChange={setAgoraConfig}
+            />
+          )}
+
+          {activeTab === 'whisper' && whisperConfig && (
+            <WhisperSettings
+              config={whisperConfig}
+              onChange={setWhisperConfig}
             />
           )}
         </div>

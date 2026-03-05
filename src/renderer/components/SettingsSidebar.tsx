@@ -1,6 +1,6 @@
 import React from 'react';
 
-export type SettingsTab = 'identity' | 'backend' | 'policy';
+export type SettingsTab = 'identity' | 'backend' | 'policy' | 'agora' | 'whisper';
 
 interface SettingsSidebarProps {
   activeTab: SettingsTab;
@@ -11,6 +11,8 @@ const TABS: { key: SettingsTab; label: string }[] = [
   { key: 'identity', label: 'Identity' },
   { key: 'backend', label: 'Backend' },
   { key: 'policy', label: 'Policy' },
+  { key: 'agora', label: 'Agora' },
+  { key: 'whisper', label: 'Whisper' },
 ];
 
 export default function SettingsSidebar({ activeTab, onTabChange }: SettingsSidebarProps) {

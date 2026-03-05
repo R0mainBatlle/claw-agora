@@ -1,5 +1,14 @@
-import { useState, useEffect } from 'react';
-import type { NearbyPeerData, BleStatusData, AuraSettingsData, BackendStatusData, EncounterPolicyData } from '../types';
+import { useState, useEffect, useCallback } from 'react';
+import type {
+  NearbyPeerData,
+  BleStatusData,
+  AuraSettingsData,
+  BackendStatusData,
+  EncounterPolicyData,
+  AgoraPostData,
+  WhisperSessionData,
+  WhisperMessageData,
+} from '../types';
 
 export function useNearbyPeers() {
   const [peers, setPeers] = useState<NearbyPeerData[]>([]);
@@ -67,4 +76,53 @@ export function useEncounterPolicy() {
   };
 
   return { policy, updatePolicy };
+}
+
+export function useAgoraPosts() {
+  const [posts, setPosts] = useState<AgoraPostData[]>([]);
+
+  useEffect(() => {
+    window.auraAPI.getAgoraPosts().then(setPosts);
+    const unsub = window.auraAPI.onAgoraPost((post: AgoraPostData) => {
+      setPosts(prev => [...prev.slice(-49), post]);
+    });
+    return unsub;
+  }, []);
+
+  return posts;
+}
+
+export function useWhisperSessions() {
+  const [sessions, setSessions] = useState<WhisperSessionData[]>([]);
+
+  useEffect(() => {
+    window.auraAPI.getWhisperSessions().then(setSessions);
+    const unsub = window.auraAPI.onWhisperSessionUpdate(setSessions);
+    return unsub;
+  }, []);
+
+  return sessions;
+}
+
+export function useWhisperMessages(sessionId: string | null) {
+  const [messages, setMessages] = useState<WhisperMessageData[]>([]);
+
+  useEffect(() => {
+    if (!sessionId) {
+      setMessages([]);
+      return;
+    }
+    window.auraAPI.getWhisperMessages(sessionId).then(setMessages);
+  }, [sessionId]);
+
+  useEffect(() => {
+    const unsub = window.auraAPI.onWhisperMessage((msg: WhisperMessageData) => {
+      if (sessionId && msg.sessionId === sessionId) {
+        setMessages(prev => [...prev, msg]);
+      }
+    });
+    return unsub;
+  }, [sessionId]);
+
+  return messages;
 }

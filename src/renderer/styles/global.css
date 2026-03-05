@@ -26,6 +26,7 @@
   --green: #34C759;
   --red: #FF3B30;
   --orange: #FF9500;
+  --purple: #BF5AF2;
   --fill: rgba(255, 255, 255, 0.12);
   --fill-dim: rgba(255, 255, 255, 0.06);
 }
@@ -47,7 +48,7 @@ html, body {
   flex-direction: column;
   height: 100vh;
   padding: 14px;
-  gap: 10px;
+  gap: 8px;
 }
 
 /* Header */
@@ -63,6 +64,12 @@ html, body {
   font-weight: 600;
   color: var(--text-primary);
   letter-spacing: -0.4px;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .header button {
@@ -90,6 +97,78 @@ html, body {
   transform: scale(0.95);
 }
 
+/* Main tabs */
+.main-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.main-tab {
+  flex: 1;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 6px 8px;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+}
+
+.main-tab:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.main-tab.active {
+  background: var(--accent-secondary);
+  color: var(--accent);
+}
+
+.tab-badge {
+  font-size: 10px;
+  font-weight: 600;
+  min-width: 16px;
+  height: 16px;
+  line-height: 16px;
+  text-align: center;
+  border-radius: 8px;
+  background: var(--fill-dim);
+  color: var(--text-tertiary);
+}
+
+.main-tab.active .tab-badge {
+  background: rgba(90, 200, 250, 0.2);
+  color: var(--accent);
+}
+
+.tab-badge-active {
+  background: rgba(52, 199, 89, 0.2) !important;
+  color: var(--green) !important;
+}
+
+.main-tab.active .tab-badge-active {
+  background: rgba(52, 199, 89, 0.25) !important;
+  color: var(--green) !important;
+}
+
+/* Main content area */
+.main-content {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
 /* Status bar */
 .status-bar {
   display: flex;
@@ -106,6 +185,7 @@ html, body {
   align-items: center;
   gap: 6px;
   color: var(--text-secondary);
+  font-size: 11px;
 }
 
 .status-dot {
@@ -207,6 +287,280 @@ html, body {
   justify-content: center;
   font-size: 10px;
   color: var(--text-quaternary);
+}
+
+/* ==================== Agora Feed ==================== */
+
+.agora-feed {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 2px 0;
+}
+
+.agora-post {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  transition: background 0.15s ease;
+}
+
+.agora-post:hover {
+  background: var(--surface-hover);
+}
+
+.agora-post-local {
+  border-left: 2px solid var(--accent);
+}
+
+.agora-post-flagged {
+  border-left: 2px solid var(--orange);
+}
+
+.agora-post-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.agora-author {
+  font-family: 'SF Mono', 'Menlo', ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.agora-post-local .agora-author {
+  color: var(--green);
+}
+
+.agora-time {
+  font-size: 10px;
+  color: var(--text-quaternary);
+}
+
+.agora-post-content {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+.agora-post-flag {
+  font-size: 10px;
+  color: var(--orange);
+  margin-top: 4px;
+}
+
+/* ==================== Whisper ==================== */
+
+/* Session list */
+.whisper-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.whisper-session-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.whisper-session-item:hover {
+  background: var(--surface-hover);
+}
+
+.whisper-session-item:active {
+  background: var(--surface-active);
+  transform: scale(0.98);
+}
+
+.whisper-session-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.whisper-peer-id {
+  font-family: 'SF Mono', 'Menlo', ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--purple);
+}
+
+.whisper-state {
+  font-size: 10px;
+  font-weight: 500;
+  padding: 1px 7px;
+  border-radius: 4px;
+  background: var(--fill-dim);
+  color: var(--text-tertiary);
+}
+
+.whisper-state-established {
+  background: rgba(52, 199, 89, 0.15);
+  color: var(--green);
+}
+
+.whisper-session-meta {
+  display: flex;
+  gap: 10px;
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-top: 4px;
+}
+
+/* Chat view */
+.whisper-chat {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+
+.whisper-chat-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--separator);
+}
+
+.whisper-back-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 18px;
+  font-weight: 300;
+  transition: all 0.15s ease;
+}
+
+.whisper-back-btn:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+.whisper-chat-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.whisper-chat-peer {
+  font-family: 'SF Mono', 'Menlo', ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--purple);
+}
+
+.whisper-chat-status {
+  font-size: 10px;
+  color: var(--green);
+}
+
+.whisper-chat-lock {
+  font-size: 14px;
+  opacity: 0.3;
+}
+
+/* Messages */
+.whisper-messages {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 0;
+}
+
+.whisper-empty {
+  text-align: center;
+  padding: 40px 0;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.whisper-empty-lock {
+  font-size: 28px;
+  opacity: 0.2;
+  margin-bottom: 8px;
+}
+
+.whisper-empty-sub {
+  font-size: 11px;
+  color: var(--text-quaternary);
+  margin-top: 2px;
+}
+
+.whisper-msg {
+  display: flex;
+  margin-bottom: 2px;
+}
+
+.whisper-msg-in {
+  justify-content: flex-start;
+}
+
+.whisper-msg-out {
+  justify-content: flex-end;
+}
+
+.whisper-msg-bubble {
+  max-width: 80%;
+  padding: 8px 11px;
+  border-radius: 12px;
+  word-break: break-word;
+}
+
+.whisper-msg-in .whisper-msg-bubble {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-bottom-left-radius: 4px;
+}
+
+.whisper-msg-out .whisper-msg-bubble {
+  background: rgba(90, 200, 250, 0.12);
+  border: 1px solid rgba(90, 200, 250, 0.15);
+  border-bottom-right-radius: 4px;
+}
+
+.whisper-msg-text {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-primary);
+}
+
+.whisper-msg-meta {
+  font-size: 10px;
+  color: var(--text-quaternary);
+  margin-top: 3px;
+  text-align: right;
+}
+
+.whisper-msg-flag {
+  color: var(--orange);
 }
 
 /* ==================== Settings panel ==================== */

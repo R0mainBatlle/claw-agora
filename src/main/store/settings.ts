@@ -11,12 +11,30 @@ export interface EncounterPolicyConfig {
   requireHumanPresent: boolean;
 }
 
+export interface AgoraSettingsConfig {
+  enabled: boolean;
+  postIntervalMs: number;
+  readIntervalMs: number;
+  maxPostLength: number;
+  ringBufferSize: number;
+}
+
+export interface WhisperSettingsConfig {
+  enabled: boolean;
+  maxConcurrentSessions: number;
+  autoInitiate: boolean;
+  initiateAfterMs: number;
+  maxMessageLength: number;
+}
+
 export interface AuraSettings {
   humanDescription: string;
   tags: string[];
   backendType: string;
   backendOptions: Record<string, unknown>;
   encounterPolicy: EncounterPolicyConfig;
+  agora: AgoraSettingsConfig;
+  whisper: WhisperSettingsConfig;
 }
 
 const DEFAULT_ENCOUNTER_POLICY: EncounterPolicyConfig = {
@@ -28,6 +46,22 @@ const DEFAULT_ENCOUNTER_POLICY: EncounterPolicyConfig = {
   requireHumanPresent: false,
 };
 
+const DEFAULT_AGORA: AgoraSettingsConfig = {
+  enabled: true,
+  postIntervalMs: 60_000,
+  readIntervalMs: 30_000,
+  maxPostLength: 512,
+  ringBufferSize: 32,
+};
+
+const DEFAULT_WHISPER: WhisperSettingsConfig = {
+  enabled: true,
+  maxConcurrentSessions: 3,
+  autoInitiate: true,
+  initiateAfterMs: 30_000,
+  maxMessageLength: 1024,
+};
+
 const DEFAULT_SETTINGS: AuraSettings = {
   humanDescription: '',
   tags: [],
@@ -37,6 +71,8 @@ const DEFAULT_SETTINGS: AuraSettings = {
     authToken: '',
   },
   encounterPolicy: { ...DEFAULT_ENCOUNTER_POLICY },
+  agora: { ...DEFAULT_AGORA },
+  whisper: { ...DEFAULT_WHISPER },
 };
 
 export class SettingsStore {
@@ -63,11 +99,11 @@ export class SettingsStore {
     return settings;
   }
 
-  /** Migrate old v1 flat config to v2 structure */
+  /** Migrate old config formats (v1/v2) to v3 structure */
   private migrate(raw: Record<string, unknown>): AuraSettings {
-    // Already v2 format — has backendType
+    // v2 or v3 format — has backendType
     if (raw.backendType) {
-      return {
+      const migrated = {
         ...structuredClone(DEFAULT_SETTINGS),
         ...raw,
         encounterPolicy: {
@@ -78,7 +114,24 @@ export class SettingsStore {
           ...(DEFAULT_SETTINGS.backendOptions),
           ...(raw.backendOptions as Record<string, unknown> || {}),
         },
+        agora: {
+          ...DEFAULT_AGORA,
+          ...(raw.agora as Record<string, unknown> || {}),
+        },
+        whisper: {
+          ...DEFAULT_WHISPER,
+          ...(raw.whisper as Record<string, unknown> || {}),
+        },
       } as AuraSettings;
+
+      // If v2 (missing agora/whisper), persist the migration
+      if (!raw.agora || !raw.whisper) {
+        this.settings = migrated;
+        this.save();
+        console.log('[Settings] Migrated v2 config to v3 format (added agora/whisper)');
+      }
+
+      return migrated;
     }
 
     // v1 format — flat gatewayUrl / authToken at top level
@@ -91,6 +144,8 @@ export class SettingsStore {
       backendType: 'openclaw',
       backendOptions: { gatewayUrl, authToken },
       encounterPolicy: { ...DEFAULT_ENCOUNTER_POLICY },
+      agora: { ...DEFAULT_AGORA },
+      whisper: { ...DEFAULT_WHISPER },
     };
 
     // Persist the migrated config
@@ -119,8 +174,14 @@ export class SettingsStore {
     if (partial.encounterPolicy) {
       this.settings.encounterPolicy = { ...this.settings.encounterPolicy, ...partial.encounterPolicy };
     }
+    if (partial.agora) {
+      this.settings.agora = { ...this.settings.agora, ...partial.agora };
+    }
+    if (partial.whisper) {
+      this.settings.whisper = { ...this.settings.whisper, ...partial.whisper };
+    }
     // Shallow merge for non-nested fields
-    const { backendOptions: _bo, encounterPolicy: _ep, ...rest } = partial;
+    const { backendOptions: _bo, encounterPolicy: _ep, agora: _ag, whisper: _wh, ...rest } = partial;
     Object.assign(this.settings, rest);
 
     this.save();

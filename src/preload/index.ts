@@ -9,9 +9,15 @@ const CHANNELS = {
   QUERY_AGENT: 'agent:query',
   GET_ENCOUNTER_POLICY: 'policy:get',
   UPDATE_ENCOUNTER_POLICY: 'policy:update',
+  GET_AGORA_POSTS: 'agora:get-posts',
+  GET_WHISPER_SESSIONS: 'whisper:get-sessions',
+  GET_WHISPER_MESSAGES: 'whisper:get-messages',
   NEARBY_PEERS_UPDATED: 'event:nearby-peers-updated',
   BLE_STATUS_CHANGED: 'event:ble-status-changed',
   BACKEND_STATUS_CHANGED: 'event:backend-status-changed',
+  AGORA_POST_RECEIVED: 'event:agora-post',
+  WHISPER_SESSION_UPDATE: 'event:whisper-session-update',
+  WHISPER_MESSAGE: 'event:whisper-message',
 } as const;
 
 const auraAPI = {
@@ -34,6 +40,14 @@ const auraAPI = {
   updateEncounterPolicy: (partial: Record<string, unknown>) =>
     ipcRenderer.invoke(CHANNELS.UPDATE_ENCOUNTER_POLICY, partial),
 
+  getAgoraPosts: () => ipcRenderer.invoke(CHANNELS.GET_AGORA_POSTS),
+
+  getWhisperSessions: () => ipcRenderer.invoke(CHANNELS.GET_WHISPER_SESSIONS),
+
+  getWhisperMessages: (sessionId: string) =>
+    ipcRenderer.invoke(CHANNELS.GET_WHISPER_MESSAGES, sessionId),
+
+  // Event listeners
   onNearbyPeersUpdated: (callback: (peers: unknown[]) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, peers: unknown[]) => callback(peers);
     ipcRenderer.on(CHANNELS.NEARBY_PEERS_UPDATED, listener);
@@ -50,6 +64,24 @@ const auraAPI = {
     const listener = (_event: Electron.IpcRendererEvent, status: unknown) => callback(status);
     ipcRenderer.on(CHANNELS.BACKEND_STATUS_CHANGED, listener);
     return () => ipcRenderer.removeListener(CHANNELS.BACKEND_STATUS_CHANGED, listener);
+  },
+
+  onAgoraPost: (callback: (post: unknown) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, post: unknown) => callback(post);
+    ipcRenderer.on(CHANNELS.AGORA_POST_RECEIVED, listener);
+    return () => ipcRenderer.removeListener(CHANNELS.AGORA_POST_RECEIVED, listener);
+  },
+
+  onWhisperSessionUpdate: (callback: (sessions: unknown[]) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, sessions: unknown[]) => callback(sessions);
+    ipcRenderer.on(CHANNELS.WHISPER_SESSION_UPDATE, listener);
+    return () => ipcRenderer.removeListener(CHANNELS.WHISPER_SESSION_UPDATE, listener);
+  },
+
+  onWhisperMessage: (callback: (msg: unknown) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, msg: unknown) => callback(msg);
+    ipcRenderer.on(CHANNELS.WHISPER_MESSAGE, listener);
+    return () => ipcRenderer.removeListener(CHANNELS.WHISPER_MESSAGE, listener);
   },
 };
 

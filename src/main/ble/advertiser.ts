@@ -7,9 +7,15 @@ const { PrimaryService, Characteristic } = bleno;
 export class Advertiser extends EventEmitter {
   private currentPayload: Buffer = Buffer.alloc(24);
   private isAdvertising = false;
+  private extraServices: InstanceType<typeof PrimaryService>[] = [];
 
   updatePayload(payload: Buffer): void {
     this.currentPayload = payload;
+  }
+
+  /** Register additional GATT services (Agora, Whisper) to advertise alongside the beacon. */
+  addService(service: InstanceType<typeof PrimaryService>): void {
+    this.extraServices.push(service);
   }
 
   async start(): Promise<void> {
@@ -31,7 +37,7 @@ export class Advertiser extends EventEmitter {
       characteristics: [beaconCharacteristic],
     });
 
-    await bleno.setServicesAsync([auraService]);
+    await bleno.setServicesAsync([auraService, ...this.extraServices]);
     await bleno.startAdvertisingAsync('Aura', [serviceUUID]);
 
     this.isAdvertising = true;

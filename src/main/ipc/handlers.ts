@@ -5,6 +5,8 @@ import { BLEEngine } from '../ble/engine';
 import { EncounterManager } from '../encounter/manager';
 import { EncounterPolicy } from '../encounter/policy';
 import { AgentBackend } from '../agent/backend';
+import { AgoraManager } from '../agora/manager';
+import { WhisperManager } from '../whisper/manager';
 
 export function registerIpcHandlers(
   settings: SettingsStore,
@@ -13,6 +15,8 @@ export function registerIpcHandlers(
   backend: AgentBackend,
   encounterPolicy: EncounterPolicy,
   getWindow: () => BrowserWindow | undefined,
+  agoraManager?: AgoraManager,
+  whisperManager?: WhisperManager,
 ): void {
   ipcMain.handle(IPC_CHANNELS.GET_SETTINGS, () => {
     return settings.get();
@@ -22,7 +26,7 @@ export function registerIpcHandlers(
     const updated = settings.update(partial);
     bleEngine.updateBeacon(updated.tags, {
       acceptingEncounters: true,
-      whisperCapable: false,
+      whisperCapable: updated.whisper?.enabled ?? true,
       humanPresent: true,
     });
     if (partial.backendOptions) {
@@ -30,6 +34,12 @@ export function registerIpcHandlers(
     }
     if (partial.encounterPolicy) {
       encounterPolicy.updateConfig(partial.encounterPolicy);
+    }
+    if (partial.agora && agoraManager) {
+      agoraManager.updateConfig(partial.agora);
+    }
+    if (partial.whisper && whisperManager) {
+      whisperManager.updateConfig(partial.whisper);
     }
     return updated;
   });
@@ -63,6 +73,20 @@ export function registerIpcHandlers(
     return encounterPolicy.getConfig();
   });
 
+  // Agora
+  ipcMain.handle(IPC_CHANNELS.GET_AGORA_POSTS, () => {
+    return agoraManager?.feed || [];
+  });
+
+  // Whisper
+  ipcMain.handle(IPC_CHANNELS.GET_WHISPER_SESSIONS, () => {
+    return whisperManager?.getSessions() || [];
+  });
+
+  ipcMain.handle(IPC_CHANNELS.GET_WHISPER_MESSAGES, (_event, sessionId: string) => {
+    return whisperManager?.getMessages(sessionId) || [];
+  });
+
   // Push events to renderer
   const sendToRenderer = (channel: string, data: unknown) => {
     const win = getWindow();
@@ -86,4 +110,21 @@ export function registerIpcHandlers(
   backend.on('status', () => {
     sendToRenderer(IPC_CHANNELS.BACKEND_STATUS_CHANGED, backend.getStatus());
   });
+
+  // Agora events
+  if (agoraManager) {
+    agoraManager.on('post', (item) => {
+      sendToRenderer(IPC_CHANNELS.AGORA_POST_RECEIVED, item);
+    });
+  }
+
+  // Whisper events
+  if (whisperManager) {
+    whisperManager.on('session-update', () => {
+      sendToRenderer(IPC_CHANNELS.WHISPER_SESSION_UPDATE, whisperManager.getSessions());
+    });
+    whisperManager.on('session-message', (msg) => {
+      sendToRenderer(IPC_CHANNELS.WHISPER_MESSAGE, msg);
+    });
+  }
 }
