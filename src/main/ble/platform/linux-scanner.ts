@@ -12,38 +12,6 @@ const GATT_ATTEMPT_COOLDOWN_MS = 120_000;
 
 const BLUEZ = 'org.bluez';
 const ADAPTER_PATH = '/org/bluez/hci0';
-const AGENT_PATH = '/com/aura/agent';
-
-const { Interface } = dbus.interface;
-
-// Auto-accept pairing agent (NoInputNoOutput)
-class AutoAcceptAgent extends Interface {
-  Release(): void {}
-  RequestDefault(): void {}
-  AuthorizeService(_device: string, _uuid: string): void {}
-  Cancel(): void {}
-  RequestConfirmation(_device: string, _passkey: number): void {}
-  RequestAuthorization(_device: string): void {}
-  DisplayPasskey(_device: string, _passkey: number, _entered: number): void {}
-  DisplayPinCode(_device: string, _pincode: string): void {}
-  RequestPinCode(_device: string): string { return '0000'; }
-  RequestPasskey(_device: string): number { return 0; }
-}
-
-AutoAcceptAgent.configureMembers({
-  methods: {
-    Release: { inSignature: '', outSignature: '' },
-    RequestDefault: { inSignature: '', outSignature: '' },
-    AuthorizeService: { inSignature: 'os', outSignature: '' },
-    Cancel: { inSignature: '', outSignature: '' },
-    RequestConfirmation: { inSignature: 'ou', outSignature: '' },
-    RequestAuthorization: { inSignature: 'o', outSignature: '' },
-    DisplayPasskey: { inSignature: 'ouq', outSignature: '' },
-    DisplayPinCode: { inSignature: 'os', outSignature: '' },
-    RequestPinCode: { inSignature: 'o', outSignature: 's' },
-    RequestPasskey: { inSignature: 'o', outSignature: 'u' },
-  },
-});
 
 export class LinuxScanner extends EventEmitter implements IScanner {
   private bus: MessageBus | null = null;
@@ -103,18 +71,6 @@ export class LinuxScanner extends EventEmitter implements IScanner {
         }
       }
     });
-
-    // Register auto-accept agent to avoid pairing popups
-    const agent = new AutoAcceptAgent('org.bluez.Agent1');
-    this.bus.export(AGENT_PATH, agent);
-    try {
-      const agentMgr = (await this.bus.getProxyObject(BLUEZ, '/org/bluez')).getInterface('org.bluez.AgentManager1');
-      await agentMgr.RegisterAgent(AGENT_PATH, 'NoInputNoOutput');
-      await agentMgr.RequestDefaultAgent(AGENT_PATH);
-      console.log('[Scanner] Auto-accept agent registered');
-    } catch (err: any) {
-      console.warn('[Scanner] Agent registration failed:', err?.message);
-    }
 
     await adapter.StartDiscovery();
     this.isScanning = true;
@@ -228,8 +184,6 @@ export class LinuxScanner extends EventEmitter implements IScanner {
     const device = await this.bus.getProxyObject(BLUEZ, devicePath);
     const deviceIface = device.getInterface('org.bluez.Device1');
     const deviceProps = device.getInterface('org.freedesktop.DBus.Properties');
-
-    await deviceProps.Set('org.bluez.Device1', 'Trusted', new Variant('b', true));
 
     const TIMEOUT = 10_000;
     try {

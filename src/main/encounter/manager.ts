@@ -83,6 +83,13 @@ export class EncounterManager extends EventEmitter {
     return Array.from(this.peers.values());
   }
 
+  getPeerByPeripheralId(peripheralId: string): NearbyPeer | undefined {
+    for (const peer of this.peers.values()) {
+      if (peer.peripheralId === peripheralId) return peer;
+    }
+    return undefined;
+  }
+
   stop(): void {
     if (this.sweepInterval) {
       clearInterval(this.sweepInterval);

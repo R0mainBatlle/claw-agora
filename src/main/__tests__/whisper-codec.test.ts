@@ -36,7 +36,9 @@ describe('Whisper Control Codec', () => {
 
   it('KEY_EXCHANGE encode/decode roundtrip', () => {
     const publicKey = Buffer.alloc(65, 0x04); // uncompressed P-256 starts with 0x04
-    const buf = encodeKeyExchange(clawId, publicKey);
+    const identityPublicKey = Buffer.alloc(44, 0x11);
+    const identitySignature = Buffer.alloc(64, 0x22);
+    const buf = encodeKeyExchange(clawId, publicKey, identityPublicKey, identitySignature);
     const msg = decodeControlMessage(buf);
 
     expect(msg).not.toBeNull();
@@ -44,6 +46,8 @@ describe('Whisper Control Codec', () => {
     expect(msg!.senderClawId.equals(clawId)).toBe(true);
     expect(msg!.publicKey!.length).toBe(65);
     expect(msg!.publicKey!.equals(publicKey)).toBe(true);
+    expect(msg!.identityPublicKey!.equals(identityPublicKey)).toBe(true);
+    expect(msg!.identitySignature!.equals(identitySignature)).toBe(true);
   });
 
   it('VERIFY encode/decode roundtrip', () => {

@@ -1,6 +1,7 @@
 import { stripUUID, AGORA_SERVICE_UUID, AGORA_BOARD_META_UUID, AGORA_BOARD_READ_UUID } from '../ble/constants';
-import { decodeAgoraMeta, decodeAgoraPost } from './codec';
+import { decodeAgoraMeta, decodeAgoraPost, verifyAgoraPost } from './codec';
 import type { AgoraPost } from './types';
+import { deriveClawId } from '../security/identity';
 
 /**
  * Read a remote peer's agora board via noble GATT connection.
@@ -8,7 +9,8 @@ import type { AgoraPost } from './types';
  */
 export async function readRemoteAgora(
   peripheral: { discoverSomeServicesAndCharacteristicsAsync: Function; uuid: string },
-): Promise<{ meta: { postCount: number; latestSeq: number; oldestSeq: number; ownerClawId: Buffer }; posts: AgoraPost[] } | null> {
+  expectedOwnerClawIdHex?: string,
+): Promise<{ meta: { postCount: number; latestSeq: number; oldestSeq: number; ownerClawId: Buffer; ownerPublicKeyDer: Buffer }; posts: AgoraPost[] } | null> {
   try {
     const serviceUUID = stripUUID(AGORA_SERVICE_UUID);
     const metaUUID = stripUUID(AGORA_BOARD_META_UUID);
@@ -35,7 +37,10 @@ export async function readRemoteAgora(
     });
 
     const meta = decodeAgoraMeta(metaBuf);
-    if (!meta || meta.postCount === 0) return { meta: meta || { postCount: 0, latestSeq: 0, oldestSeq: 0, ownerClawId: Buffer.alloc(4) }, posts: [] };
+    if (!meta) return null;
+    if (!meta.ownerClawId.equals(deriveClawId(meta.ownerPublicKeyDer))) return null;
+    if (expectedOwnerClawIdHex && meta.ownerClawId.toString('hex') !== expectedOwnerClawIdHex) return null;
+    if (meta.postCount === 0) return { meta, posts: [] };
 
     // Read board
     const boardBuf: Buffer = await new Promise((resolve, reject) => {
@@ -54,7 +59,9 @@ export async function readRemoteAgora(
       if (offset + len > boardBuf.length) break;
       const postBuf = boardBuf.subarray(offset, offset + len);
       const post = decodeAgoraPost(postBuf);
-      if (post) posts.push(post);
+      if (post && post.clawId.equals(meta.ownerClawId) && verifyAgoraPost(post, meta.ownerPublicKeyDer)) {
+        posts.push(post);
+      }
       offset += len;
     }
 

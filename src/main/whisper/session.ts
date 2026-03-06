@@ -3,6 +3,19 @@ import { EventEmitter } from 'events';
 import { WhisperState, ControlType, CloseReason, RejectReason, WhisperSessionData } from './types';
 import * as wCrypto from './crypto';
 import * as codec from './codec';
+import type { AuraIdentity } from '../security/identity';
+import { deriveClawId, signPayload, verifyPayload } from '../security/identity';
+
+const KEY_EXCHANGE_CONTEXT = Buffer.from('aura-whisper-key-exchange-v1');
+
+function buildKeyExchangeTranscript(
+  senderClawId: Buffer,
+  initiatorNonce: Buffer,
+  responderNonce: Buffer,
+  publicKey: Buffer,
+): Buffer {
+  return Buffer.concat([KEY_EXCHANGE_CONTEXT, senderClawId, initiatorNonce, responderNonce, publicKey]);
+}
 
 /**
  * Whisper session state machine.
@@ -18,8 +31,15 @@ import * as codec from './codec';
 export class WhisperSession extends EventEmitter {
   private data: WhisperSessionData;
   private handshakeTimer: ReturnType<typeof setTimeout> | null = null;
+  private _localIdentity: Pick<AuraIdentity, 'publicKeyDer' | 'privateKey'>;
 
-  constructor(role: 'initiator' | 'responder', localClawId: Buffer, peerClawId: string, handshakeTimeoutMs: number = 15_000) {
+  constructor(
+    role: 'initiator' | 'responder',
+    localClawId: Buffer,
+    peerClawId: string,
+    localIdentity: Pick<AuraIdentity, 'publicKeyDer' | 'privateKey'>,
+    handshakeTimeoutMs: number = 15_000,
+  ) {
     super();
     this.data = {
       id: crypto.randomUUID(),
@@ -38,6 +58,7 @@ export class WhisperSession extends EventEmitter {
       lastActivity: Date.now(),
     };
     this._localClawId = localClawId;
+    this._localIdentity = localIdentity;
     this._handshakeTimeoutMs = handshakeTimeoutMs;
   }
 
@@ -62,6 +83,12 @@ export class WhisperSession extends EventEmitter {
   /** Handle an incoming control message. */
   handleControlMessage(msg: codec.ControlMessage): void {
     this.data.lastActivity = Date.now();
+
+    if (msg.senderClawId.toString('hex') !== this.data.peerClawId) {
+      this.emit('error', new Error('Unexpected sender clawId'));
+      this.close(CloseReason.NORMAL);
+      return;
+    }
 
     switch (msg.type) {
       case ControlType.HELLO:
@@ -119,21 +146,48 @@ export class WhisperSession extends EventEmitter {
 
   private sendKeyExchange(): void {
     const { ecdh, publicKey } = wCrypto.generateKeyPair();
+    const initNonce = this.data.role === 'initiator' ? this.data.localNonce : this.data.peerNonce!;
+    const respNonce = this.data.role === 'initiator' ? this.data.peerNonce! : this.data.localNonce;
+    const signature = signPayload(
+      buildKeyExchangeTranscript(this._localClawId, initNonce, respNonce, publicKey),
+      this._localIdentity.privateKey,
+    );
+
     this.data.localECDH = ecdh;
     this.data.state = WhisperState.KEY_EXCHANGE;
-    this.emit('send-control', codec.encodeKeyExchange(this._localClawId, publicKey));
+    this.emit('send-control', codec.encodeKeyExchange(
+      this._localClawId,
+      publicKey,
+      this._localIdentity.publicKeyDer,
+      signature,
+    ));
   }
 
   private handleKeyExchange(msg: codec.ControlMessage): void {
     if (this.data.state !== WhisperState.KEY_EXCHANGE) return;
-    if (!this.data.localECDH || !msg.publicKey) return;
-
-    this.data.peerPublicKey = msg.publicKey;
-    this.data.sharedSecret = wCrypto.computeSharedSecret(this.data.localECDH, msg.publicKey);
+    if (!this.data.localECDH || !msg.publicKey || !msg.identityPublicKey || !msg.identitySignature) return;
 
     const initNonce = this.data.role === 'initiator' ? this.data.localNonce : this.data.peerNonce!;
     const respNonce = this.data.role === 'initiator' ? this.data.peerNonce! : this.data.localNonce;
+    const expectedPeerClawId = Buffer.from(this.data.peerClawId, 'hex');
 
+    if (!deriveClawId(msg.identityPublicKey).equals(expectedPeerClawId)) {
+      this.emit('error', new Error('Peer identity key does not match clawId'));
+      this.close(CloseReason.NORMAL);
+      return;
+    }
+    if (!verifyPayload(
+      buildKeyExchangeTranscript(expectedPeerClawId, initNonce, respNonce, msg.publicKey),
+      msg.identitySignature,
+      msg.identityPublicKey,
+    )) {
+      this.emit('error', new Error('Peer key exchange signature invalid'));
+      this.close(CloseReason.NORMAL);
+      return;
+    }
+
+    this.data.peerPublicKey = msg.publicKey;
+    this.data.sharedSecret = wCrypto.computeSharedSecret(this.data.localECDH, msg.publicKey);
     this.data.sessionKey = wCrypto.deriveSessionKey(this.data.sharedSecret, initNonce, respNonce);
 
     // Send verify proof
@@ -200,6 +254,17 @@ export class WhisperSession extends EventEmitter {
     if (this.data.state !== WhisperState.ESTABLISHED || !this.data.sessionKey) return null;
 
     try {
+      if (frame.seqNo !== this.data.rxSeq) {
+        this.emit('error', new Error(`Unexpected sequence number: expected ${this.data.rxSeq}, got ${frame.seqNo}`));
+        this.close(CloseReason.NORMAL);
+        return null;
+      }
+      if (frame.iv.readUInt32BE(0) !== frame.seqNo) {
+        this.emit('error', new Error('Frame IV/sequence mismatch'));
+        this.close(CloseReason.NORMAL);
+        return null;
+      }
+
       const plaintext = wCrypto.decrypt(frame.ciphertext, frame.iv, frame.authTag, this.data.sessionKey);
       this.data.rxSeq++;
       this.data.lastActivity = Date.now();

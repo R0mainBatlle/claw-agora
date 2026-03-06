@@ -28,7 +28,6 @@ export class AgoraManager extends EventEmitter {
   private ringBuffer: AgoraRingBuffer;
   private backend: AgentBackend;
   private ownerClawId: Buffer;
-  private sessionKey: Buffer | undefined;
   private postTimer: ReturnType<typeof setInterval> | null = null;
   private sweepTimer: ReturnType<typeof setInterval> | null = null;
   private seenSeqs = new Map<string, number>();
@@ -39,7 +38,6 @@ export class AgoraManager extends EventEmitter {
   constructor(
     backend: AgentBackend,
     ownerClawId: Buffer,
-    sessionKey?: Buffer,
     config?: Partial<AgoraConfig>,
   ) {
     super();
@@ -47,7 +45,6 @@ export class AgoraManager extends EventEmitter {
     this.ringBuffer = new AgoraRingBuffer(this.config.ringBufferSize);
     this.backend = backend;
     this.ownerClawId = ownerClawId;
-    this.sessionKey = sessionKey;
   }
 
   get buffer(): AgoraRingBuffer {
@@ -70,7 +67,7 @@ export class AgoraManager extends EventEmitter {
         if (!content) return;
 
         const trimmed = content.substring(0, this.config.maxPostLength);
-        this.ringBuffer.add(this.ownerClawId, trimmed, this.config.ttlMinutes, this.sessionKey);
+        this.ringBuffer.add(this.ownerClawId, trimmed, this.config.ttlMinutes);
 
         const item: AgoraFeedItem = {
           id: `local-${++this.feedSeq}`,
@@ -107,10 +104,16 @@ export class AgoraManager extends EventEmitter {
 
     if (newPosts.length === 0) return;
 
-    const maxSeq = Math.max(...newPosts.map(p => p.seqNo));
-    this.seenSeqs.set(peerClawIdHex, maxSeq);
+    let maxAcceptedSeq = lastSeen;
 
     for (const post of newPosts) {
+      if (post.clawId.toString('hex') !== peerClawIdHex) {
+        console.warn(`[Agora] Rejected post with mismatched author: expected ${peerClawIdHex}, got ${post.clawId.toString('hex')}`);
+        continue;
+      }
+
+      maxAcceptedSeq = Math.max(maxAcceptedSeq, post.seqNo);
+
       const result = inspectContent(post.content);
       if (!result.safe) {
         console.warn(`[Agora] Quarantined post from ${peerClawIdHex}: ${result.threats.join(', ')}`);
@@ -131,6 +134,10 @@ export class AgoraManager extends EventEmitter {
       } catch (err) {
         console.error('[Agora] Delivery failed:', (err as Error).message);
       }
+    }
+
+    if (maxAcceptedSeq > lastSeen) {
+      this.seenSeqs.set(peerClawIdHex, maxAcceptedSeq);
     }
   }
 

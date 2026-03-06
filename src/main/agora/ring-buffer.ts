@@ -18,7 +18,7 @@ export class AgoraRingBuffer {
       contentLen: Buffer.byteLength(content, 'utf-8'),
       ttlMinutes,
       seqNo,
-      signature: Buffer.alloc(8), // filled by codec during encoding
+      signature: Buffer.alloc(64), // filled by codec during encoding
       content,
     };
 

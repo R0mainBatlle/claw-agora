@@ -28,12 +28,17 @@ export class GatewayBridge extends EventEmitter {
 
   connect(): void {
     if (!this.url) return;
+    if (!this.isAllowedUrl(this.url)) {
+      this.emit('status', 'disconnected');
+      return;
+    }
     this.shouldReconnect = true;
     this.doConnect();
   }
 
   private doConnect(): void {
     if (!this.url) return;
+    if (!this.isAllowedUrl(this.url)) return;
 
     try {
       this.ws = new WebSocket(this.url);
@@ -181,5 +186,26 @@ export class GatewayBridge extends EventEmitter {
 
   get connected(): boolean {
     return this.ws?.readyState === WebSocket.OPEN;
+  }
+
+  private isAllowedUrl(url: string): boolean {
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol === 'wss:') return true;
+      if (parsed.protocol !== 'ws:') {
+        this.emit('error', new Error(`Unsupported gateway protocol: ${parsed.protocol}`));
+        return false;
+      }
+
+      const hostname = parsed.hostname.toLowerCase();
+      const isLoopback = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+      if (isLoopback) return true;
+
+      this.emit('error', new Error('Refusing insecure remote ws:// gateway URL; use wss:// or localhost'));
+      return false;
+    } catch {
+      this.emit('error', new Error('Invalid gateway URL'));
+      return false;
+    }
   }
 }

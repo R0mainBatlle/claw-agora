@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import readline from 'node:readline';
+import { ensurePrivateDir, enforcePrivateFile, PRIVATE_FILE_MODE } from '../security/files';
 
 export interface ActivityEntry {
   type: 'encounter' | 'agora-post' | 'whisper-message' | 'whisper-session';
@@ -14,16 +15,19 @@ export class ActivityLog {
 
   constructor() {
     const dir = path.join(os.homedir(), '.aura');
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
+    ensurePrivateDir(dir);
     this.filePath = path.join(dir, 'activity.jsonl');
+    enforcePrivateFile(this.filePath);
   }
 
   append(entry: ActivityEntry): void {
     const line = JSON.stringify(entry) + '\n';
-    fs.appendFile(this.filePath, line, (err) => {
-      if (err) console.error('[ActivityLog] Write failed:', err.message);
+    fs.appendFile(this.filePath, line, { mode: PRIVATE_FILE_MODE }, (err) => {
+      if (err) {
+        console.error('[ActivityLog] Write failed:', err.message);
+        return;
+      }
+      enforcePrivateFile(this.filePath);
     });
   }
 

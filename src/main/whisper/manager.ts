@@ -6,11 +6,14 @@ import { WhisperConfig, DEFAULT_WHISPER_CONFIG, CloseReason, RejectReason } from
 import { inspectContent } from '../security/quarantine';
 import { AgentBackend, PeerContext } from '../agent/backend';
 import type { ControlMessage, DataFrame } from './codec';
+import type { AuraIdentity } from '../security/identity';
+import type { ConnectionHandle } from '@stoprocent/bleno';
 
 interface ActiveSession {
   session: WhisperSession;
   client?: WhisperClient;
   peerPeripheralId?: string;
+  peerHandle?: ConnectionHandle;
 }
 
 export interface WhisperMessageItem {
@@ -45,8 +48,10 @@ export class WhisperManager extends EventEmitter {
   private config: WhisperConfig;
   private sessions = new Map<string, ActiveSession>();
   private peerClawIdToSession = new Map<string, string>();
+  private peerHandleToSession = new Map<ConnectionHandle, string>();
   private backend: AgentBackend;
   private localClawId: Buffer;
+  private localIdentity: Pick<AuraIdentity, 'publicKeyDer' | 'privateKey'>;
   private whisperService: WhisperService | null;
   private idleCheckTimer: ReturnType<typeof setInterval> | null = null;
   private _messages = new Map<string, WhisperMessageItem[]>(); // sessionId → messages
@@ -57,6 +62,7 @@ export class WhisperManager extends EventEmitter {
   constructor(
     backend: AgentBackend,
     localClawId: Buffer,
+    localIdentity: Pick<AuraIdentity, 'publicKeyDer' | 'privateKey'>,
     whisperService: WhisperService | null,
     config?: Partial<WhisperConfig>,
   ) {
@@ -64,14 +70,21 @@ export class WhisperManager extends EventEmitter {
     this.config = { ...DEFAULT_WHISPER_CONFIG, ...config };
     this.backend = backend;
     this.localClawId = localClawId;
+    this.localIdentity = localIdentity;
     this.whisperService = whisperService;
 
     if (this.whisperService) {
-      this.whisperService.on('control-message', (msg: ControlMessage) => {
-        this.handleIncomingControl(msg);
+      this.whisperService.on('control-message', ({ handle, message }: { handle: ConnectionHandle; message: ControlMessage }) => {
+        this.handleIncomingControl(handle, message);
       });
-      this.whisperService.on('data-frame', (frame: DataFrame) => {
-        this.handleIncomingDataFrame(frame);
+      this.whisperService.on('data-frame', ({ handle, frame }: { handle: ConnectionHandle; frame: DataFrame }) => {
+        this.handleIncomingDataFrame(handle, frame);
+      });
+      this.whisperService.on('disconnected', (handle: ConnectionHandle) => {
+        const sessionId = this.peerHandleToSession.get(handle);
+        if (sessionId) {
+          this.closeSession(sessionId, 'peer-disconnected');
+        }
       });
     }
   }
@@ -94,6 +107,7 @@ export class WhisperManager extends EventEmitter {
     }
     this.sessions.clear();
     this.peerClawIdToSession.clear();
+    this.peerHandleToSession.clear();
   }
 
   get activeSessionCount(): number {
@@ -155,7 +169,7 @@ export class WhisperManager extends EventEmitter {
     const connected = await client.connect();
     if (!connected) return false;
 
-    const session = new WhisperSession('initiator', this.localClawId, peerClawId, this.config.handshakeTimeoutMs);
+    const session = new WhisperSession('initiator', this.localClawId, peerClawId, this.localIdentity, this.config.handshakeTimeoutMs);
     const active: ActiveSession = { session, client, peerPeripheralId: peripheral.id };
 
     this.registerSession(active);
@@ -190,13 +204,25 @@ export class WhisperManager extends EventEmitter {
     return true;
   }
 
-  private async handleIncomingControl(msg: ControlMessage): Promise<void> {
+  private async handleIncomingControl(handle: ConnectionHandle, msg: ControlMessage): Promise<void> {
+    const existingHandleSessionId = this.peerHandleToSession.get(handle);
+    if (existingHandleSessionId) {
+      const active = this.sessions.get(existingHandleSessionId);
+      if (active) {
+        active.session.handleControlMessage(msg);
+        return;
+      }
+    }
+
     const peerClawIdHex = msg.senderClawId.toString('hex');
 
     const existingSessionId = this.peerClawIdToSession.get(peerClawIdHex);
     if (existingSessionId) {
       const active = this.sessions.get(existingSessionId);
       if (active) {
+        if (active.peerHandle !== undefined && active.peerHandle !== handle) {
+          return;
+        }
         active.session.handleControlMessage(msg);
         return;
       }
@@ -204,24 +230,24 @@ export class WhisperManager extends EventEmitter {
 
     if (msg.type !== 0x01) return;
     if (this.sessions.size >= this.config.maxConcurrentSessions) {
-      const session = new WhisperSession('responder', this.localClawId, peerClawIdHex, this.config.handshakeTimeoutMs);
+      const session = new WhisperSession('responder', this.localClawId, peerClawIdHex, this.localIdentity, this.config.handshakeTimeoutMs);
+      session.on('send-control', (data: Buffer) => {
+        this.whisperService?.sendControl(data, handle);
+      });
       session.handleControlMessage(msg);
       session.rejectHandshake(RejectReason.BUSY);
-      session.on('send-control', (data: Buffer) => {
-        this.whisperService?.sendControl(data);
-      });
       return;
     }
 
-    const session = new WhisperSession('responder', this.localClawId, peerClawIdHex, this.config.handshakeTimeoutMs);
-    const active: ActiveSession = { session };
+    const session = new WhisperSession('responder', this.localClawId, peerClawIdHex, this.localIdentity, this.config.handshakeTimeoutMs);
+    const active: ActiveSession = { session, peerHandle: handle };
     this.registerSession(active);
 
     session.on('send-control', (data: Buffer) => {
-      this.whisperService?.sendControl(data);
+      this.whisperService?.sendControl(data, handle);
     });
     session.on('send-data', (data: Buffer) => {
-      this.whisperService?.sendData(data);
+      this.whisperService?.sendData(data, handle);
     });
 
     this.wireSessionEvents(session);
@@ -251,13 +277,14 @@ export class WhisperManager extends EventEmitter {
     }
   }
 
-  private handleIncomingDataFrame(frame: DataFrame): void {
-    for (const [, active] of this.sessions) {
-      if (!active.client) {
-        this.onDataFrame(active.session, frame);
-        return;
-      }
-    }
+  private handleIncomingDataFrame(handle: ConnectionHandle, frame: DataFrame): void {
+    const sessionId = this.peerHandleToSession.get(handle);
+    if (!sessionId) return;
+
+    const active = this.sessions.get(sessionId);
+    if (!active) return;
+
+    this.onDataFrame(active.session, frame);
   }
 
   private async onDataFrame(session: WhisperSession, frame: DataFrame): Promise<void> {
@@ -337,6 +364,9 @@ export class WhisperManager extends EventEmitter {
     active.client?.disconnect();
     this.sessions.delete(sessionId);
     this.peerClawIdToSession.delete(active.session.peerClawId);
+    if (active.peerHandle !== undefined) {
+      this.peerHandleToSession.delete(active.peerHandle);
+    }
     this.emit('session-closed', sessionId, active.session.peerClawId, reason || 'local-close');
     this.emit('session-update');
   }
@@ -348,6 +378,9 @@ export class WhisperManager extends EventEmitter {
   private registerSession(active: ActiveSession): void {
     this.sessions.set(active.session.id, active);
     this.peerClawIdToSession.set(active.session.peerClawId, active.session.id);
+    if (active.peerHandle !== undefined) {
+      this.peerHandleToSession.set(active.peerHandle, active.session.id);
+    }
     this._messages.set(active.session.id, []);
     this.emit('session-update');
   }
@@ -371,8 +404,12 @@ export class WhisperManager extends EventEmitter {
     });
 
     session.on('closed', (reason: string) => {
+      const active = this.sessions.get(session.id);
       this.sessions.delete(session.id);
       this.peerClawIdToSession.delete(session.peerClawId);
+      if (active?.peerHandle !== undefined) {
+        this.peerHandleToSession.delete(active.peerHandle);
+      }
       console.log(`[Whisper] Session ${session.id.substring(0, 8)} closed: ${reason}`);
       this.emit('session-closed', session.id, session.peerClawId, reason);
       this.emit('session-update');

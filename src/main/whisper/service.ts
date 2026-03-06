@@ -28,10 +28,10 @@ const DEFAULT_MTU = 512;
  */
 export class WhisperService extends EventEmitter {
   public service: InstanceType<typeof PrimaryService>;
-  private controlNotify: ((data: Buffer) => void) | null = null;
-  private txNotify: ((data: Buffer) => void) | null = null;
-  private reassembler = new Reassembler();
-  private controlReassembler = new Reassembler();
+  private controlNotifiers = new Map<ConnectionHandle, (data: Buffer) => void>();
+  private txNotifiers = new Map<ConnectionHandle, (data: Buffer) => void>();
+  private reassemblers = new Map<ConnectionHandle, Reassembler>();
+  private controlReassemblers = new Map<ConnectionHandle, Reassembler>();
   private mtu: number;
 
   constructor(mtu: number = DEFAULT_MTU) {
@@ -42,20 +42,22 @@ export class WhisperService extends EventEmitter {
     const controlChar = new Characteristic({
       uuid: stripUUID(WHISPER_CONTROL_UUID),
       properties: ['write', 'notify'],
-      onWriteRequest: (_handle: ConnectionHandle, data: Buffer, _offset: number, _withoutResponse: boolean, callback: WriteRequestCallback) => {
+      onWriteRequest: (handle: ConnectionHandle, data: Buffer, _offset: number, _withoutResponse: boolean, callback: WriteRequestCallback) => {
         // Reassemble fragmented control messages
-        const complete = this.controlReassembler.addFragment(data);
+        const complete = this.getControlReassembler(handle).addFragment(data);
         if (complete) {
           const msg = decodeControlMessage(complete);
-          if (msg) this.emit('control-message', msg);
+          if (msg) this.emit('control-message', { handle, message: msg });
         }
         callback(Characteristic.RESULT_SUCCESS);
       },
-      onSubscribe: (_handle: ConnectionHandle, _maxValueSize: number, updateValueCallback: (data: Buffer) => void) => {
-        this.controlNotify = updateValueCallback;
+      onSubscribe: (handle: ConnectionHandle, _maxValueSize: number, updateValueCallback: (data: Buffer) => void) => {
+        this.controlNotifiers.set(handle, updateValueCallback);
       },
-      onUnsubscribe: (_handle: ConnectionHandle) => {
-        this.controlNotify = null;
+      onUnsubscribe: (handle: ConnectionHandle) => {
+        this.controlNotifiers.delete(handle);
+        this.controlReassemblers.delete(handle);
+        this.maybeEmitDisconnected(handle);
       },
     });
 
@@ -63,11 +65,13 @@ export class WhisperService extends EventEmitter {
     const txChar = new Characteristic({
       uuid: stripUUID(WHISPER_TX_UUID),
       properties: ['notify'],
-      onSubscribe: (_handle: ConnectionHandle, _maxValueSize: number, updateValueCallback: (data: Buffer) => void) => {
-        this.txNotify = updateValueCallback;
+      onSubscribe: (handle: ConnectionHandle, _maxValueSize: number, updateValueCallback: (data: Buffer) => void) => {
+        this.txNotifiers.set(handle, updateValueCallback);
       },
-      onUnsubscribe: (_handle: ConnectionHandle) => {
-        this.txNotify = null;
+      onUnsubscribe: (handle: ConnectionHandle) => {
+        this.txNotifiers.delete(handle);
+        this.reassemblers.delete(handle);
+        this.maybeEmitDisconnected(handle);
       },
     });
 
@@ -75,11 +79,11 @@ export class WhisperService extends EventEmitter {
     const rxChar = new Characteristic({
       uuid: stripUUID(WHISPER_RX_UUID),
       properties: ['write'],
-      onWriteRequest: (_handle: ConnectionHandle, data: Buffer, _offset: number, _withoutResponse: boolean, callback: WriteRequestCallback) => {
-        const complete = this.reassembler.addFragment(data);
+      onWriteRequest: (handle: ConnectionHandle, data: Buffer, _offset: number, _withoutResponse: boolean, callback: WriteRequestCallback) => {
+        const complete = this.getDataReassembler(handle).addFragment(data);
         if (complete) {
           const frame = decodeDataFrame(complete);
-          if (frame) this.emit('data-frame', frame);
+          if (frame) this.emit('data-frame', { handle, frame });
         }
         callback(Characteristic.RESULT_SUCCESS);
       },
@@ -92,24 +96,60 @@ export class WhisperService extends EventEmitter {
   }
 
   /** Send a control message (handshake) to the connected central. */
-  sendControl(data: Buffer): void {
-    if (!this.controlNotify) return;
+  sendControl(data: Buffer, handle?: ConnectionHandle): void {
+    const notifier = this.getNotifier(this.controlNotifiers, handle);
+    if (!notifier) return;
     const fragments = fragmentMessage(data, this.mtu);
     for (const frag of fragments) {
-      this.controlNotify(frag);
+      notifier(frag);
     }
   }
 
   /** Send encrypted data to the connected central via TX. */
-  sendData(data: Buffer): void {
-    if (!this.txNotify) return;
+  sendData(data: Buffer, handle?: ConnectionHandle): void {
+    const notifier = this.getNotifier(this.txNotifiers, handle);
+    if (!notifier) return;
     const fragments = fragmentMessage(data, this.mtu);
     for (const frag of fragments) {
-      this.txNotify(frag);
+      notifier(frag);
     }
   }
 
   get hasSubscribers(): boolean {
-    return this.controlNotify !== null || this.txNotify !== null;
+    return this.controlNotifiers.size > 0 || this.txNotifiers.size > 0;
+  }
+
+  private getControlReassembler(handle: ConnectionHandle): Reassembler {
+    const existing = this.controlReassemblers.get(handle);
+    if (existing) return existing;
+    const created = new Reassembler();
+    this.controlReassemblers.set(handle, created);
+    return created;
+  }
+
+  private getDataReassembler(handle: ConnectionHandle): Reassembler {
+    const existing = this.reassemblers.get(handle);
+    if (existing) return existing;
+    const created = new Reassembler();
+    this.reassemblers.set(handle, created);
+    return created;
+  }
+
+  private getNotifier(
+    notifiers: Map<ConnectionHandle, (data: Buffer) => void>,
+    handle?: ConnectionHandle,
+  ): ((data: Buffer) => void) | null {
+    if (handle !== undefined) {
+      return notifiers.get(handle) || null;
+    }
+    if (notifiers.size === 1) {
+      return notifiers.values().next().value || null;
+    }
+    return null;
+  }
+
+  private maybeEmitDisconnected(handle: ConnectionHandle): void {
+    if (this.controlNotifiers.has(handle) || this.txNotifiers.has(handle)) return;
+    this.emit('disconnected', handle);
   }
 }

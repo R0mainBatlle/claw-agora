@@ -12,11 +12,11 @@ export class BLEEngine extends EventEmitter {
   private clawId: Buffer;
   private _sessionKey: Buffer;
 
-  constructor() {
+  constructor(clawId?: Buffer) {
     super();
     this.advertiser = createAdvertiser();
     this.scanner = createScanner();
-    this.clawId = crypto.randomBytes(4);
+    this.clawId = clawId ? Buffer.from(clawId) : crypto.randomBytes(4);
     this._sessionKey = generateSessionKey();
 
     this.scanner.on('beacon-discovered', (beacon: DiscoveredBeacon) => {

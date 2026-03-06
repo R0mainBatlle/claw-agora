@@ -1,8 +1,8 @@
-import bleno, { ConnectionHandle, ReadRequestCallback, WriteRequestCallback } from '@stoprocent/bleno';
-import { stripUUID, AGORA_SERVICE_UUID, AGORA_BOARD_READ_UUID, AGORA_BOARD_WRITE_UUID, AGORA_BOARD_META_UUID } from '../ble/constants';
-import { encodeAgoraPost, encodeAgoraMeta, decodeAgoraPost } from './codec';
+import crypto from 'node:crypto';
+import bleno, { ReadRequestCallback } from '@stoprocent/bleno';
+import { stripUUID, AGORA_SERVICE_UUID, AGORA_BOARD_READ_UUID, AGORA_BOARD_META_UUID } from '../ble/constants';
+import { encodeAgoraPost, encodeAgoraMeta } from './codec';
 import { AgoraRingBuffer } from './ring-buffer';
-import type { AgoraPost } from './types';
 import { EventEmitter } from 'events';
 
 const { Characteristic, PrimaryService } = bleno;
@@ -14,14 +14,21 @@ const { Characteristic, PrimaryService } = bleno;
 export class AgoraService extends EventEmitter {
   private ringBuffer: AgoraRingBuffer;
   private ownerClawId: Buffer;
-  private sessionKey: Buffer | undefined;
+  private ownerPublicKeyDer: Buffer;
+  private ownerPrivateKey: crypto.KeyObject;
   public service: InstanceType<typeof PrimaryService>;
 
-  constructor(ringBuffer: AgoraRingBuffer, ownerClawId: Buffer, sessionKey?: Buffer) {
+  constructor(
+    ringBuffer: AgoraRingBuffer,
+    ownerClawId: Buffer,
+    ownerPublicKeyDer: Buffer,
+    ownerPrivateKey: crypto.KeyObject,
+  ) {
     super();
     this.ringBuffer = ringBuffer;
     this.ownerClawId = ownerClawId;
-    this.sessionKey = sessionKey;
+    this.ownerPublicKeyDer = ownerPublicKeyDer;
+    this.ownerPrivateKey = ownerPrivateKey;
 
     const metaChar = new Characteristic({
       uuid: stripUUID(AGORA_BOARD_META_UUID),
@@ -32,6 +39,7 @@ export class AgoraService extends EventEmitter {
           this.ringBuffer.latestSeq,
           this.ringBuffer.oldestSeq,
           this.ownerClawId,
+          this.ownerPublicKeyDer,
         );
         callback(Characteristic.RESULT_SUCCESS, meta.subarray(offset));
       },
@@ -43,7 +51,7 @@ export class AgoraService extends EventEmitter {
       onReadRequest: (_handle: unknown, offset: number, callback: ReadRequestCallback) => {
         // Serialize all posts into a single buffer
         const posts = this.ringBuffer.getAll();
-        const encoded = posts.map(p => encodeAgoraPost(p, this.sessionKey));
+        const encoded = posts.map(p => encodeAgoraPost(p, this.ownerPrivateKey));
         if (encoded.length === 0) {
           callback(Characteristic.RESULT_SUCCESS, Buffer.alloc(0));
           return;
@@ -60,21 +68,9 @@ export class AgoraService extends EventEmitter {
       },
     });
 
-    const boardWriteChar = new Characteristic({
-      uuid: stripUUID(AGORA_BOARD_WRITE_UUID),
-      properties: ['write'],
-      onWriteRequest: (_handle: ConnectionHandle, data: Buffer, _offset: number, _withoutResponse: boolean, callback: WriteRequestCallback) => {
-        const post = decodeAgoraPost(data);
-        if (post) {
-          this.emit('remote-post', post);
-        }
-        callback(Characteristic.RESULT_SUCCESS);
-      },
-    });
-
     this.service = new PrimaryService({
       uuid: stripUUID(AGORA_SERVICE_UUID),
-      characteristics: [metaChar, boardReadChar, boardWriteChar],
+      characteristics: [metaChar, boardReadChar],
     });
   }
 }

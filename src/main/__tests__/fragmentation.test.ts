@@ -4,7 +4,7 @@ import { fragmentMessage, Reassembler } from '../ble/fragmentation';
 describe('fragmentMessage', () => {
   it('returns a single fragment when data fits in one MTU', () => {
     const data = Buffer.from('hello');
-    const fragments = fragmentMessage(data, 100); // 100 - 5 header = 95 payload
+    const fragments = fragmentMessage(data, 100); // 100 - 7 header = 93 payload
     expect(fragments).toHaveLength(1);
     // Single fragment should have both FIRST and LAST flags
     const flags = fragments[0][0];
@@ -14,9 +14,9 @@ describe('fragmentMessage', () => {
 
   it('splits data into correct number of fragments', () => {
     const data = Buffer.alloc(100, 0x42);
-    const mtu = 25; // 25 - 5 = 20 payload per fragment → 5 fragments
+    const mtu = 25; // 25 - 7 = 18 payload per fragment → 6 fragments
     const fragments = fragmentMessage(data, mtu);
-    expect(fragments).toHaveLength(5);
+    expect(fragments).toHaveLength(6);
 
     // First fragment has FIRST flag only
     expect(fragments[0][0] & 0x01).toBe(0x01);
@@ -26,13 +26,13 @@ describe('fragmentMessage', () => {
     expect(fragments[2][0]).toBe(0x00);
 
     // Last fragment has LAST flag only
-    expect(fragments[4][0] & 0x01).toBe(0x00);
-    expect(fragments[4][0] & 0x02).toBe(0x02);
+    expect(fragments[5][0] & 0x01).toBe(0x00);
+    expect(fragments[5][0] & 0x02).toBe(0x02);
   });
 
   it('handles exact MTU boundary (data exactly fills one fragment)', () => {
     const payloadSize = 20;
-    const mtu = payloadSize + 5; // header
+    const mtu = payloadSize + 7; // header
     const data = Buffer.alloc(payloadSize, 0xaa);
     const fragments = fragmentMessage(data, mtu);
     expect(fragments).toHaveLength(1);
@@ -46,12 +46,14 @@ describe('fragmentMessage', () => {
 
   it('writes correct headers', () => {
     const data = Buffer.alloc(50, 0x42);
-    const mtu = 25; // 20 payload → 3 fragments
+    const mtu = 27; // 27 - 7 header = 20 payload → 3 fragments
     const fragments = fragmentMessage(data, mtu);
+    const messageId = fragments[0].readUInt16BE(1);
 
     for (let i = 0; i < fragments.length; i++) {
-      const seq = fragments[i].readUInt16BE(1);
-      const totalLen = fragments[i].readUInt16BE(3);
+      const seq = fragments[i].readUInt16BE(3);
+      const totalLen = fragments[i].readUInt16BE(5);
+      expect(fragments[i].readUInt16BE(1)).toBe(messageId);
       expect(seq).toBe(i);
       expect(totalLen).toBe(50);
     }
@@ -135,7 +137,7 @@ describe('Reassembler', () => {
 
   it('roundtrips small data through fragment/reassemble', () => {
     const original = Buffer.from('The quick brown fox jumps over the lazy dog');
-    const fragments = fragmentMessage(original, 20);
+    const fragments = fragmentMessage(original, 24);
     let result: Buffer | null = null;
     for (const frag of fragments) {
       result = reassembler.addFragment(frag);
@@ -158,5 +160,25 @@ describe('Reassembler', () => {
     }
     expect(result).not.toBeNull();
     expect(result!.equals(original)).toBe(true);
+  });
+
+  it('keeps concurrent equal-length messages separate', () => {
+    const first = fragmentMessage(Buffer.alloc(60, 0x41), 27);
+    const second = fragmentMessage(Buffer.alloc(60, 0x42), 27);
+
+    expect(reassembler.addFragment(first[0])).toBeNull();
+    expect(reassembler.addFragment(second[0])).toBeNull();
+
+    let resultA: Buffer | null = null;
+    let resultB: Buffer | null = null;
+    for (let i = 1; i < first.length; i++) {
+      resultA = reassembler.addFragment(first[i]);
+      resultB = reassembler.addFragment(second[i]);
+    }
+
+    expect(resultA).not.toBeNull();
+    expect(resultB).not.toBeNull();
+    expect(resultA!.every((b) => b === 0x41)).toBe(true);
+    expect(resultB!.every((b) => b === 0x42)).toBe(true);
   });
 });

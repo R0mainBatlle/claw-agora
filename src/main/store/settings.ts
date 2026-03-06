@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { ensurePrivateDir, enforcePrivateFile, writePrivateFile } from '../security/files';
 
 export interface EncounterPolicyConfig {
   enabled: boolean;
@@ -83,6 +84,8 @@ export class SettingsStore {
   constructor() {
     this.configDir = path.join(os.homedir(), '.aura');
     this.configPath = path.join(this.configDir, 'config.json');
+    ensurePrivateDir(this.configDir);
+    enforcePrivateFile(this.configPath);
     this.settings = this.load();
   }
 
@@ -157,10 +160,8 @@ export class SettingsStore {
   }
 
   save(): void {
-    if (!fs.existsSync(this.configDir)) {
-      fs.mkdirSync(this.configDir, { recursive: true });
-    }
-    fs.writeFileSync(this.configPath, JSON.stringify(this.settings, null, 2), 'utf-8');
+    ensurePrivateDir(this.configDir);
+    writePrivateFile(this.configPath, JSON.stringify(this.settings, null, 2));
   }
 
   get(): AuraSettings {

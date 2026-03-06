@@ -3,6 +3,8 @@ import { WHISPER_DATA_MAGIC } from '../ble/constants';
 import { ControlType, CloseReason, RejectReason } from './types';
 
 // --- Control Messages (on Control characteristic) ---
+const KEY_EXCHANGE_LENGTHS_SIZE = 6;
+const FIXED_CONTROL_HEADER_SIZE = 5; // type + clawId
 
 export function encodeHello(senderClawId: Buffer, nonce: Buffer, maxVersion: number = 1): Buffer {
   const buf = Buffer.alloc(14);
@@ -22,11 +24,26 @@ export function encodeHelloAck(senderClawId: Buffer, nonce: Buffer, agreedVersio
   return buf;
 }
 
-export function encodeKeyExchange(senderClawId: Buffer, publicKey: Buffer): Buffer {
-  const buf = Buffer.alloc(70);
+export function encodeKeyExchange(
+  senderClawId: Buffer,
+  publicKey: Buffer,
+  identityPublicKey: Buffer,
+  identitySignature: Buffer,
+): Buffer {
+  const buf = Buffer.alloc(
+    FIXED_CONTROL_HEADER_SIZE + KEY_EXCHANGE_LENGTHS_SIZE + publicKey.length + identityPublicKey.length + identitySignature.length,
+  );
   buf[0] = ControlType.KEY_EXCHANGE;
   senderClawId.copy(buf, 1);
-  publicKey.copy(buf, 5); // 65 bytes P-256
+  buf.writeUInt16BE(publicKey.length, 5);
+  buf.writeUInt16BE(identityPublicKey.length, 7);
+  buf.writeUInt16BE(identitySignature.length, 9);
+  let offset = 11;
+  publicKey.copy(buf, offset);
+  offset += publicKey.length;
+  identityPublicKey.copy(buf, offset);
+  offset += identityPublicKey.length;
+  identitySignature.copy(buf, offset);
   return buf;
 }
 
@@ -67,6 +84,8 @@ export interface ControlMessage {
   nonce?: Buffer;
   version?: number;
   publicKey?: Buffer;
+  identityPublicKey?: Buffer;
+  identitySignature?: Buffer;
   proof?: Buffer;
   reason?: number;
 }
@@ -84,8 +103,19 @@ export function decodeControlMessage(buf: Buffer): ControlMessage | null {
       return { type, senderClawId, nonce: Buffer.from(buf.subarray(5, 13)), version: buf[13] };
 
     case ControlType.KEY_EXCHANGE:
-      if (buf.length < 70) return null;
-      return { type, senderClawId, publicKey: Buffer.from(buf.subarray(5, 70)) };
+      if (buf.length < 11) return null;
+      const publicKeyLen = buf.readUInt16BE(5);
+      const identityPublicKeyLen = buf.readUInt16BE(7);
+      const identitySignatureLen = buf.readUInt16BE(9);
+      const expectedLen = 11 + publicKeyLen + identityPublicKeyLen + identitySignatureLen;
+      if (buf.length < expectedLen) return null;
+      return {
+        type,
+        senderClawId,
+        publicKey: Buffer.from(buf.subarray(11, 11 + publicKeyLen)),
+        identityPublicKey: Buffer.from(buf.subarray(11 + publicKeyLen, 11 + publicKeyLen + identityPublicKeyLen)),
+        identitySignature: Buffer.from(buf.subarray(11 + publicKeyLen + identityPublicKeyLen, expectedLen)),
+      };
 
     case ControlType.VERIFY:
       if (buf.length < 37) return null;

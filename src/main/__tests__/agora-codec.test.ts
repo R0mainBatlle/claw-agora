@@ -1,10 +1,13 @@
+import crypto from 'node:crypto';
 import { describe, it, expect } from 'vitest';
-import { encodeAgoraPost, decodeAgoraPost, encodeAgoraMeta, decodeAgoraMeta } from '../agora/codec';
-import { signBeacon } from '../ble/crypto';
+import { encodeAgoraPost, decodeAgoraPost, encodeAgoraMeta, decodeAgoraMeta, verifyAgoraPost } from '../agora/codec';
 import type { AgoraPost } from '../agora/types';
+import { deriveClawId } from '../security/identity';
 
 describe('Agora Post Codec', () => {
-  const clawId = Buffer.from('a1b2c3d4', 'hex');
+  const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519');
+  const ownerPublicKeyDer = Buffer.from(publicKey.export({ format: 'der', type: 'spki' }));
+  const clawId = deriveClawId(ownerPublicKeyDer);
 
   function makePost(content: string, overrides?: Partial<AgoraPost>): AgoraPost {
     return {
@@ -13,7 +16,7 @@ describe('Agora Post Codec', () => {
       contentLen: Buffer.byteLength(content, 'utf-8'),
       ttlMinutes: 30,
       seqNo: 1,
-      signature: Buffer.alloc(8),
+      signature: Buffer.alloc(64),
       content,
       ...overrides,
     };
@@ -33,15 +36,14 @@ describe('Agora Post Codec', () => {
   });
 
   it('encode/decode roundtrip (signed)', () => {
-    const sessionKey = Buffer.alloc(32, 0xab);
     const post = makePost('Signed post content');
-    const buf = encodeAgoraPost(post, sessionKey);
+    const buf = encodeAgoraPost(post, privateKey);
     const decoded = decodeAgoraPost(buf);
 
     expect(decoded).not.toBeNull();
     expect(decoded!.content).toBe('Signed post content');
-    // Signature should be non-zero
     expect(decoded!.signature.some(b => b !== 0)).toBe(true);
+    expect(verifyAgoraPost(decoded!, ownerPublicKeyDer)).toBe(true);
   });
 
   it('returns null for wrong magic', () => {
@@ -84,8 +86,10 @@ describe('Agora Post Codec', () => {
 
 describe('Agora Meta Codec', () => {
   it('encode/decode roundtrip', () => {
-    const ownerClawId = Buffer.from('11223344', 'hex');
-    const buf = encodeAgoraMeta(5, 10, 6, ownerClawId);
+    const { publicKey } = crypto.generateKeyPairSync('ed25519');
+    const ownerPublicKeyDer = Buffer.from(publicKey.export({ format: 'der', type: 'spki' }));
+    const ownerClawId = deriveClawId(ownerPublicKeyDer);
+    const buf = encodeAgoraMeta(5, 10, 6, ownerClawId, ownerPublicKeyDer);
     const meta = decodeAgoraMeta(buf);
 
     expect(meta).not.toBeNull();
@@ -93,6 +97,7 @@ describe('Agora Meta Codec', () => {
     expect(meta!.latestSeq).toBe(10);
     expect(meta!.oldestSeq).toBe(6);
     expect(meta!.ownerClawId.equals(ownerClawId)).toBe(true);
+    expect(meta!.ownerPublicKeyDer.equals(ownerPublicKeyDer)).toBe(true);
   });
 
   it('returns null for truncated buffer', () => {
@@ -100,8 +105,10 @@ describe('Agora Meta Codec', () => {
   });
 
   it('handles zero values', () => {
-    const ownerClawId = Buffer.from('00000000', 'hex');
-    const buf = encodeAgoraMeta(0, 0, 0, ownerClawId);
+    const { publicKey } = crypto.generateKeyPairSync('ed25519');
+    const ownerPublicKeyDer = Buffer.from(publicKey.export({ format: 'der', type: 'spki' }));
+    const ownerClawId = deriveClawId(ownerPublicKeyDer);
+    const buf = encodeAgoraMeta(0, 0, 0, ownerClawId, ownerPublicKeyDer);
     const meta = decodeAgoraMeta(buf);
 
     expect(meta!.postCount).toBe(0);

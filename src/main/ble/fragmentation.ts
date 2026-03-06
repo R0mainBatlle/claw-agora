@@ -1,16 +1,25 @@
 /**
  * Application-level BLE message fragmentation and reassembly.
  *
- * Fragment header (5 bytes):
+ * Fragment header (7 bytes):
  *   Byte 0:     flags (bit 0 = first, bit 1 = last)
- *   Bytes 1-2:  fragmentSeq (uint16 BE, 0-based)
- *   Bytes 3-4:  totalLen (uint16 BE, only meaningful in first fragment)
+ *   Bytes 1-2:  messageId (uint16 BE)
+ *   Bytes 3-4:  fragmentSeq (uint16 BE, 0-based)
+ *   Bytes 5-6:  totalLen (uint16 BE, only meaningful in first fragment)
  */
 
 const FLAG_FIRST = 0x01;
 const FLAG_LAST = 0x02;
-const HEADER_SIZE = 5;
+const HEADER_SIZE = 7;
 const REASSEMBLY_TIMEOUT_MS = 5000;
+let nextMessageId = 1;
+
+function allocateMessageId(): number {
+  const messageId = nextMessageId;
+  nextMessageId = (nextMessageId + 1) & 0xffff;
+  if (nextMessageId === 0) nextMessageId = 1;
+  return messageId;
+}
 
 export function fragmentMessage(data: Buffer, mtu: number): Buffer[] {
   const payloadPerFragment = mtu - HEADER_SIZE;
@@ -18,6 +27,7 @@ export function fragmentMessage(data: Buffer, mtu: number): Buffer[] {
 
   const totalFragments = Math.ceil(data.length / payloadPerFragment);
   const fragments: Buffer[] = [];
+  const messageId = allocateMessageId();
 
   for (let i = 0; i < totalFragments; i++) {
     const offset = i * payloadPerFragment;
@@ -29,8 +39,9 @@ export function fragmentMessage(data: Buffer, mtu: number): Buffer[] {
 
     const header = Buffer.alloc(HEADER_SIZE);
     header[0] = flags;
-    header.writeUInt16BE(i, 1);
-    header.writeUInt16BE(data.length, 3);
+    header.writeUInt16BE(messageId, 1);
+    header.writeUInt16BE(i, 3);
+    header.writeUInt16BE(data.length, 5);
 
     fragments.push(Buffer.concat([header, chunk]));
   }
@@ -49,8 +60,9 @@ export class Reassembler {
     if (data.length < HEADER_SIZE) return null;
 
     const flags = data[0];
-    const seq = data.readUInt16BE(1);
-    const totalLen = data.readUInt16BE(3);
+    const messageId = data.readUInt16BE(1);
+    const seq = data.readUInt16BE(3);
+    const totalLen = data.readUInt16BE(5);
     const payload = data.subarray(HEADER_SIZE);
 
     // Single-fragment message (both first and last)
@@ -63,7 +75,7 @@ export class Reassembler {
 
     // Use totalLen from first fragment as the buffer key
     if (isFirst) {
-      this.buffers.set(totalLen, {
+      this.buffers.set(messageId, {
         totalLen,
         fragments: new Map([[seq, payload]]),
         firstSeen: Date.now(),
@@ -73,8 +85,9 @@ export class Reassembler {
 
     // Find matching reassembly buffer by checking all active buffers
     // (use totalLen from header — it's the same across all fragments of a message)
-    const entry = this.buffers.get(totalLen);
+    const entry = this.buffers.get(messageId);
     if (!entry) return null;
+    if (entry.totalLen !== totalLen) return null;
 
     entry.fragments.set(seq, payload);
 
@@ -94,7 +107,7 @@ export class Reassembler {
       parts.push(part);
     }
 
-    this.buffers.delete(totalLen);
+    this.buffers.delete(messageId);
     const result = Buffer.concat(parts);
     return result.subarray(0, entry.totalLen);
   }

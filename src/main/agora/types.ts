@@ -4,7 +4,7 @@ export interface AgoraPost {
   contentLen: number;
   ttlMinutes: number;
   seqNo: number;
-  signature: Buffer;    // 8 bytes
+  signature: Buffer;    // 64 bytes Ed25519 signature
   content: string;      // UTF-8
 }
 

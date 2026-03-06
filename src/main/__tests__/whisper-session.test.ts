@@ -1,7 +1,19 @@
+import crypto from 'node:crypto';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { WhisperSession } from '../whisper/session';
 import { WhisperState, CloseReason, RejectReason } from '../whisper/types';
 import { decodeControlMessage, decodeDataFrame } from '../whisper/codec';
+import { deriveClawId } from '../security/identity';
+
+function createIdentity() {
+  const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519');
+  const publicKeyDer = Buffer.from(publicKey.export({ format: 'der', type: 'spki' }));
+  return {
+    clawId: deriveClawId(publicKeyDer),
+    publicKeyDer,
+    privateKey,
+  };
+}
 
 /**
  * Wire two WhisperSession instances together via a message queue.
@@ -54,8 +66,20 @@ function wireSessionPair(initiator: WhisperSession, responder: WhisperSession) {
 }
 
 describe('WhisperSession integration (two sessions wired)', () => {
-  const aliceClawId = Buffer.from('a1b2c3d4', 'hex');
-  const bobClawId = Buffer.from('e5f6a7b8', 'hex');
+  const aliceIdentity = createIdentity();
+  const bobIdentity = createIdentity();
+  const aliceClawId = aliceIdentity.clawId;
+  const bobClawId = bobIdentity.clawId;
+  const bobClawIdHex = bobClawId.toString('hex');
+  const aliceClawIdHex = aliceClawId.toString('hex');
+
+  function makeInitiator(timeoutMs: number = 15000): WhisperSession {
+    return new WhisperSession('initiator', aliceClawId, bobClawIdHex, aliceIdentity, timeoutMs);
+  }
+
+  function makeResponder(timeoutMs: number = 15000): WhisperSession {
+    return new WhisperSession('responder', bobClawId, aliceClawIdHex, bobIdentity, timeoutMs);
+  }
 
   beforeEach(() => {
     vi.useFakeTimers();
@@ -66,8 +90,8 @@ describe('WhisperSession integration (two sessions wired)', () => {
   });
 
   it('full handshake: both reach ESTABLISHED', () => {
-    const initiator = new WhisperSession('initiator', aliceClawId, 'e5f6a7b8', 15000);
-    const responder = new WhisperSession('responder', bobClawId, 'a1b2c3d4', 15000);
+    const initiator = makeInitiator();
+    const responder = makeResponder();
 
     const initEstablished = vi.fn();
     const respEstablished = vi.fn();
@@ -91,8 +115,8 @@ describe('WhisperSession integration (two sessions wired)', () => {
   });
 
   it('bidirectional messaging after handshake', () => {
-    const initiator = new WhisperSession('initiator', aliceClawId, 'e5f6a7b8', 15000);
-    const responder = new WhisperSession('responder', bobClawId, 'a1b2c3d4', 15000);
+    const initiator = makeInitiator();
+    const responder = makeResponder();
 
     const wire = wireSessionPair(initiator, responder);
 
@@ -120,8 +144,8 @@ describe('WhisperSession integration (two sessions wired)', () => {
   });
 
   it('multi-message exchange (5+ each direction)', () => {
-    const initiator = new WhisperSession('initiator', aliceClawId, 'e5f6a7b8', 15000);
-    const responder = new WhisperSession('responder', bobClawId, 'a1b2c3d4', 15000);
+    const initiator = makeInitiator();
+    const responder = makeResponder();
 
     const wire = wireSessionPair(initiator, responder);
 
@@ -152,8 +176,8 @@ describe('WhisperSession integration (two sessions wired)', () => {
   });
 
   it('reject flow: responder rejects, initiator gets closed', () => {
-    const initiator = new WhisperSession('initiator', aliceClawId, 'e5f6a7b8', 15000);
-    const responder = new WhisperSession('responder', bobClawId, 'a1b2c3d4', 15000);
+    const initiator = makeInitiator();
+    const responder = makeResponder();
 
     const wire = wireSessionPair(initiator, responder);
 
@@ -170,8 +194,8 @@ describe('WhisperSession integration (two sessions wired)', () => {
   });
 
   it('close from initiator: responder gets closed event', () => {
-    const initiator = new WhisperSession('initiator', aliceClawId, 'e5f6a7b8', 15000);
-    const responder = new WhisperSession('responder', bobClawId, 'a1b2c3d4', 15000);
+    const initiator = makeInitiator();
+    const responder = makeResponder();
 
     const wire = wireSessionPair(initiator, responder);
 
@@ -192,8 +216,8 @@ describe('WhisperSession integration (two sessions wired)', () => {
   });
 
   it('close from responder: initiator gets closed event', () => {
-    const initiator = new WhisperSession('initiator', aliceClawId, 'e5f6a7b8', 15000);
-    const responder = new WhisperSession('responder', bobClawId, 'a1b2c3d4', 15000);
+    const initiator = makeInitiator();
+    const responder = makeResponder();
 
     const wire = wireSessionPair(initiator, responder);
 
@@ -213,7 +237,7 @@ describe('WhisperSession integration (two sessions wired)', () => {
   });
 
   it('handshake timeout: session closes on timeout', () => {
-    const initiator = new WhisperSession('initiator', aliceClawId, 'e5f6a7b8', 5000);
+    const initiator = makeInitiator(5000);
     // Don't wire — responder never responds
 
     const initClosed = vi.fn();
@@ -229,8 +253,8 @@ describe('WhisperSession integration (two sessions wired)', () => {
   });
 
   it('startHandshake is no-op when not IDLE initiator', () => {
-    const initiator = new WhisperSession('initiator', aliceClawId, 'e5f6a7b8', 15000);
-    const responder = new WhisperSession('responder', bobClawId, 'a1b2c3d4', 15000);
+    const initiator = makeInitiator();
+    const responder = makeResponder();
 
     const wire = wireSessionPair(initiator, responder);
 
@@ -246,7 +270,7 @@ describe('WhisperSession integration (two sessions wired)', () => {
   });
 
   it('startHandshake is no-op for responder role', () => {
-    const responder = new WhisperSession('responder', bobClawId, 'a1b2c3d4', 15000);
+    const responder = makeResponder();
     const controlSent = vi.fn();
     responder.on('send-control', controlSent);
 
@@ -256,7 +280,7 @@ describe('WhisperSession integration (two sessions wired)', () => {
   });
 
   it('sendMessage is no-op before ESTABLISHED', () => {
-    const initiator = new WhisperSession('initiator', aliceClawId, 'e5f6a7b8', 15000);
+    const initiator = makeInitiator();
     const dataSent = vi.fn();
     initiator.on('send-data', dataSent);
 
@@ -265,8 +289,8 @@ describe('WhisperSession integration (two sessions wired)', () => {
   });
 
   it('preserves UTF-8 messages through crypto roundtrip', () => {
-    const initiator = new WhisperSession('initiator', aliceClawId, 'e5f6a7b8', 15000);
-    const responder = new WhisperSession('responder', bobClawId, 'a1b2c3d4', 15000);
+    const initiator = makeInitiator();
+    const responder = makeResponder();
 
     const wire = wireSessionPair(initiator, responder);
     initiator.startHandshake();
@@ -284,11 +308,58 @@ describe('WhisperSession integration (two sessions wired)', () => {
   });
 
   it('close on already-idle session is no-op', () => {
-    const session = new WhisperSession('initiator', aliceClawId, 'e5f6a7b8', 15000);
+    const session = makeInitiator();
     const controlSent = vi.fn();
     session.on('send-control', controlSent);
 
     session.close(); // already IDLE
     expect(controlSent).not.toHaveBeenCalled();
+  });
+
+  it('rejects replayed frames', () => {
+    const initiator = makeInitiator();
+    const responder = makeResponder();
+    const wire = wireSessionPair(initiator, responder);
+    responder.on('error', () => {});
+
+    initiator.startHandshake();
+    wire.flush();
+    responder.acceptHandshake();
+    wire.flush();
+
+    const replayFrames: Buffer[] = [];
+    initiator.on('send-data', (data: Buffer) => {
+      replayFrames.push(Buffer.from(data));
+    });
+
+    initiator.sendMessage('first');
+    wire.flush();
+    expect(replayFrames).toHaveLength(1);
+
+    const replayed = decodeDataFrame(replayFrames[0]);
+    expect(replayed).not.toBeNull();
+    expect(responder.handleDataFrame(replayed!)).toBeNull();
+  });
+
+  it('rejects a peer whose identity key does not match its claimed clawId', () => {
+    const initiator = makeInitiator();
+    const attackerIdentity = createIdentity();
+    const maliciousResponder = new WhisperSession('responder', bobClawId, aliceClawIdHex, attackerIdentity, 15000);
+    const initiatorErrors: string[] = [];
+    const initiatorClosed = vi.fn();
+
+    initiator.on('error', (err: Error) => initiatorErrors.push(err.message));
+    initiator.on('closed', initiatorClosed);
+
+    const wire = wireSessionPair(initiator, maliciousResponder);
+
+    initiator.startHandshake();
+    wire.flush();
+    maliciousResponder.acceptHandshake();
+    wire.flush();
+
+    expect(initiator.state).toBe(WhisperState.IDLE);
+    expect(initiatorErrors).toContain('Peer identity key does not match clawId');
+    expect(initiatorClosed).toHaveBeenCalled();
   });
 });

@@ -23,9 +23,9 @@ import { registerIpcHandlers } from './ipc/handlers';
 import { DiscoveredBeacon } from './ble/engine';
 import { EncounterEvent } from './encounter/types';
 import { AgoraManager } from './agora/manager';
-import { AgoraRingBuffer } from './agora/ring-buffer';
 import { readRemoteAgora } from './agora/reader';
 import { WhisperManager } from './whisper/manager';
+import { IdentityStore } from './security/identity';
 
 // AgoraService and WhisperService depend on @stoprocent/bleno (macOS-only)
 let AgoraService: any = null;
@@ -49,7 +49,8 @@ app.on('window-all-closed', () => {
 
 const settings = new SettingsStore();
 const activityLog = new ActivityLog();
-const bleEngine = new BLEEngine();
+const identity = new IdentityStore().get();
+const bleEngine = new BLEEngine(identity.clawId);
 const encounterManager = new EncounterManager();
 const currentSettings = settings.get();
 const encounterPolicy = new EncounterPolicy(currentSettings.encounterPolicy);
@@ -173,22 +174,21 @@ mb.on('ready', async () => {
   encounterManager.start();
 
   // --- Agora setup ---
-  const agoraRingBuffer = new AgoraRingBuffer();
-  const agoraManager = new AgoraManager(backend, bleEngine.localClawId, bleEngine.sessionKey);
+  const agoraManager = new AgoraManager(backend, bleEngine.localClawId);
 
   if (AgoraService) {
-    const agoraService = new AgoraService(agoraRingBuffer, bleEngine.localClawId, bleEngine.sessionKey);
+    const agoraService = new AgoraService(
+      agoraManager.buffer,
+      bleEngine.localClawId,
+      identity.publicKeyDer,
+      identity.privateKey,
+    );
     bleEngine.advertiser.addService(agoraService.service);
-
-    // Handle remote posts submitted to our board
-    agoraService.on('remote-post', (post: any) => {
-      const clawIdHex = post.clawId instanceof Buffer ? post.clawId.toString('hex') : String(post.clawId);
-      agoraManager.handleRemotePosts(clawIdHex, [post]);
-    });
 
     // Wire agora reading into scan cycle — read remote boards while still connected
     bleEngine.scanner.addConnectionHook(async (peripheral) => {
-      const result = await readRemoteAgora(peripheral);
+      const expectedPeer = encounterManager.getPeerByPeripheralId(peripheral.id);
+      const result = await readRemoteAgora(peripheral, expectedPeer?.clawId);
       if (!result || result.posts.length === 0) return;
       const peerClawIdHex = result.meta.ownerClawId.toString('hex');
       await agoraManager.handleRemotePosts(peerClawIdHex, result.posts);
@@ -211,7 +211,7 @@ mb.on('ready', async () => {
 
   // --- Whisper setup ---
   const whisperService = WhisperService ? new WhisperService() : null;
-  const whisperManager = new WhisperManager(backend, bleEngine.localClawId, whisperService);
+  const whisperManager = new WhisperManager(backend, bleEngine.localClawId, identity, whisperService);
 
   // Register whisper GATT service (macOS only)
   if (whisperService) {
