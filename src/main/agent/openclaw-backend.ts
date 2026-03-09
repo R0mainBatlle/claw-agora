@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { AgentBackend, AgentBackendStatus } from './backend';
+import { ENCOUNTER_DELIVERY_PROMPT } from './prompts';
 import { GatewayBridge } from '../gateway/bridge';
 import { EncounterEvent } from '../encounter/types';
 
@@ -59,6 +60,7 @@ export class OpenClawBackend extends AgentBackend {
       agentId: 'main',
       idempotencyKey: `aura-encounter-${event.peer.clawId}-${event.timestamp}`,
       sessionKey: 'aura-encounter',
+      extraSystemPrompt: ENCOUNTER_DELIVERY_PROMPT,
     }).catch(() => { /* fire-and-forget */ });
     console.log(`[OpenClaw] Sent encounter to agent: clawId=${event.peer.clawId}`);
   }
